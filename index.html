@@ -99,6 +99,9 @@ html,body{overscroll-behavior-y:none;}
 .bi label{font-size:12px;color:var(--mu);text-transform:uppercase;display:block;}
 .biv{font-size:17px;font-weight:700;margin-top:2px;}
 .tabs{display:flex;gap:6px;margin-bottom:11px;flex-wrap:wrap;}
+/* Barre de navigation commune de Gestion (même apparence que .tabs, toujours visible dans les 13 sous-modules) */
+.gtabs{display:flex;gap:6px;margin-bottom:11px;flex-wrap:wrap;}
+.gtabs .tab{border-radius:999px;}
 .tab{padding:8px 14px;border-radius:20px;border:1px solid var(--br);font-size:13px;font-weight:600;cursor:pointer;color:var(--mu);background:var(--card);}
 .tab.act{background:var(--b);color:#fff;border-color:var(--b);}
 .sbar{background:var(--bg);border-radius:4px;height:5px;margin-top:4px;}
@@ -247,6 +250,44 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
 #dash-kpis,#dash-kpis2,#dash-erp .kgrid{display:flex!important;flex-wrap:wrap;gap:12px;margin-bottom:12px}
 #dash-kpis .kcard,#dash-kpis2 .kcard,#dash-erp .kgrid .kcard{flex:1 1 calc(50% - 6px);min-width:0;margin:0}
 @media(min-width:700px){#dash-kpis .kcard,#dash-kpis2 .kcard,#dash-erp .kgrid .kcard{flex-basis:200px}}
+
+/* ===== FORMULAIRE « ENREGISTRER UNE VENTE » : présentation compacte (règles limitées à #m-vente) ===== */
+#m-vente .v-actions{position:sticky;bottom:calc(-17px - var(--sab,0px));z-index:5;background:var(--card);margin:6px -17px calc(-17px - var(--sab,0px));padding:10px 17px calc(10px + var(--sab,0px));border-top:1px solid var(--br);}
+#m-vente .v-actions .btn{flex:1;justify-content:center;}
+#m-vente .modal{scroll-padding-bottom:80px;}
+#arts-container>div>button{z-index:3;}
+@media(min-width:900px){
+  #m-vente .modal{max-width:980px!important;padding:16px 22px 0;max-height:94vh;}
+  #m-vente .v-actions{margin:6px -22px 0;padding:10px 22px;bottom:0;}
+  #m-vente .v-actions .btn{flex:none;min-width:190px;}
+  #m-vente .mhandle{display:none;}
+  #m-vente .mhdr{margin-bottom:10px;}
+  #m-vente .mtitle{font-size:17px;}
+  #m-vente .fg{margin-bottom:8px;}
+  #m-vente .fg label{font-size:13px;margin-bottom:3px;}
+  #m-vente .fg input,#m-vente .fg select{padding:8px 11px;font-size:14px;}
+  /* Informations générales : 2 lignes (Vendeur | Date | N° client) puis (Nom | Adresse) */
+  #m-vente .v-gen{display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:10px;}
+  #m-vente .v-gen>.frow{display:contents;}
+  #m-vente .v-gen>.fg:nth-last-child(2){grid-column:1/2;}
+  #m-vente .v-gen>.fg:last-child{grid-column:2/4;}
+  #m-vente #v-vendnom{min-height:0;}
+  #m-vente .v-arts-titre{margin:4px 0 6px!important;}
+  /* Articles : une ligne compacte par article (Produit | Qté | P.U. | Sous-total | ✕) */
+  #arts-container>div{display:grid;grid-template-columns:minmax(0,1fr) 90px 130px 150px;column-gap:10px;align-items:end;padding:8px 40px 8px 10px!important;margin-bottom:6px!important;}
+  #arts-container>div>.frow{display:contents;}
+  #arts-container>div .fg{margin-bottom:0;}
+  #arts-container>div>.pv-min-info{grid-column:1/-1;}
+  #arts-container>div>div:last-child{grid-column:4;grid-row:1;align-self:center;margin:18px 0 0!important;font-size:13px!important;}
+  #arts-container>div>button{top:50%!important;transform:translateY(-15%);right:9px!important;}
+  #m-vente .v-add-art{margin-bottom:8px!important;padding:7px;}
+  /* Total, avance, reste : sur une seule ligne */
+  #m-vente .v-pay{display:grid;grid-template-columns:1fr 1fr 1fr;column-gap:10px;}
+  #m-vente .v-pay>.frow{display:contents;}
+  #m-vente .v-pay>#v-tva-detail{grid-column:1/-1;grid-row:2;}
+  #m-vente .v-pay input{font-weight:700;font-size:15px;}
+  #m-vente #v-comm-wrap{padding:9px 11px;margin-bottom:8px;}
+}
 </style>
 </head>
 <body data-theme="light">
@@ -378,7 +419,7 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
     </div>
   </div>
   <div id="bilan-retour-versement-banner" style="display:none;margin-bottom:11px">
-    <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:9px;padding:11px 14px;font-size:13px;color:var(--r);cursor:pointer" onclick="goP('gestion',null);setTimeout(function(){const t=Array.from(document.querySelectorAll('#pg-gestion .tabs .tab')).find(x=>x.textContent.includes('Wallet'));if(t)switchG('wallet',t);openRetourVersementModal();},150)">
+    <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:9px;padding:11px 14px;font-size:13px;color:var(--r);cursor:pointer" onclick="goP('gestion',null);setTimeout(function(){const t=Array.from(document.querySelectorAll('#g-nav .tab')).find(x=>x.textContent.includes('Wallet'));if(t)switchG('wallet',t);openRetourVersementModal();},150)">
       ⚠️ Veuillez confirmer le retour de versement dans le Wallet afin de poursuivre cette opération.
     </div>
   </div>
@@ -510,10 +551,9 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
 
 <div class="page" id="pg-gestion">
   <div id="mm-summary-card" style="display:none;margin-bottom:11px"></div>
-  <div class="tabs">
+  <div class="gtabs" id="g-nav">
     <div class="tab act" onclick="switchG('stocks',this)">📦 <span data-i18n="tab_stocks">Stocks</span></div>
     <div class="tab" onclick="switchG('fournisseurs',this)">🚚 Fournisseurs</div>
-    <div class="tab" onclick="switchG('vendeurs',this)">🧑‍💼 Vendeurs</div>
     <div class="tab" onclick="switchG('clients',this)">👥 <span data-i18n="tab_clients">Clients</span></div>
     <div class="tab" onclick="switchG('charges',this)">💸 <span data-i18n="tab_charges">Charges</span></div>
     <div class="tab" id="tab-wallet" onclick="switchG('wallet',this)">💳 Wallet</div>
@@ -591,41 +631,6 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
   </div>
 
   <!-- VENDEURS -->
-  <div id="gv-vendeurs" style="display:none">
-    <div class="shdr">
-      <div class="stitle" style="font-size:15px">🧑‍💼 Gestion des Vendeurs</div>
-      <button class="btn bp bsm" onclick="openVendeurModal()">+ Nouveau Vendeur</button>
-    </div>
-    <div class="kgrid" id="vend-kpis"></div>
-    <div class="tabs">
-      <div class="tab act" id="vt-liste-btn" onclick="switchVT('liste',this)">📋 Liste</div>
-      <div class="tab" id="vt-classement-btn" onclick="switchVT('classement',this)">🏆 Classement</div>
-    </div>
-    <div id="vv-liste">
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr><th>N°</th><th>Nom</th><th>Téléphone</th><th>Adresse</th><th>Date intégration</th><th>Actions</th></tr></thead>
-          <tbody id="vend-list-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-    <div id="vv-classement" style="display:none">
-      <div class="tabs">
-        <div class="tab act" onclick="switchVClass('jour',this)">Jour</div>
-        <div class="tab" onclick="switchVClass('semaine',this)">Semaine</div>
-        <div class="tab" onclick="switchVClass('mois',this)">Mois</div>
-        <div class="tab" onclick="switchVClass('trimestre',this)">Trimestre</div>
-        <div class="tab" onclick="switchVClass('semestre',this)">Semestre</div>
-        <div class="tab" onclick="switchVClass('annee',this)">Année</div>
-      </div>
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr><th>Rang</th><th>N°</th><th>Vendeur</th><th>Montant vendu</th></tr></thead>
-          <tbody id="vend-classement-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
 
   <!-- CLIENTS -->
   <div id="gv-clients" style="display:none">
@@ -690,6 +695,45 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
       <div class="tab" onclick="switchRH('pointage',this)">⏱ Pointage</div>
       <div class="tab" onclick="switchRH('conges',this)">🌴 Congés</div>
       <div class="tab" onclick="switchRH('evaluations',this)">⭐ Évaluations</div>
+      <div class="tab" onclick="switchRH('vendeurs',this)">🧑‍💼 Vendeurs &amp; accès</div>
+    </div>
+    <!-- Vendeurs & accès (ancienne interface « Vendeurs », intégrée à RH : comptes, mots de passe, autorisations, classement) -->
+    <div id="rh-vendeurs" style="display:none">
+  <div id="gv-vendeurs" style="display:none">
+    <div class="shdr">
+      <div class="stitle" style="font-size:15px">🧑‍💼 Gestion des Vendeurs</div>
+      <button class="btn bp bsm" onclick="openVendeurModal()">+ Nouveau Vendeur</button>
+    </div>
+    <div class="kgrid" id="vend-kpis"></div>
+    <div class="tabs">
+      <div class="tab act" id="vt-liste-btn" onclick="switchVT('liste',this)">📋 Liste</div>
+      <div class="tab" id="vt-classement-btn" onclick="switchVT('classement',this)">🏆 Classement</div>
+    </div>
+    <div id="vv-liste">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>N°</th><th>Nom</th><th>Téléphone</th><th>Adresse</th><th>Date intégration</th><th>Actions</th></tr></thead>
+          <tbody id="vend-list-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="vv-classement" style="display:none">
+      <div class="tabs">
+        <div class="tab act" onclick="switchVClass('jour',this)">Jour</div>
+        <div class="tab" onclick="switchVClass('semaine',this)">Semaine</div>
+        <div class="tab" onclick="switchVClass('mois',this)">Mois</div>
+        <div class="tab" onclick="switchVClass('trimestre',this)">Trimestre</div>
+        <div class="tab" onclick="switchVClass('semestre',this)">Semestre</div>
+        <div class="tab" onclick="switchVClass('annee',this)">Année</div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Rang</th><th>N°</th><th>Vendeur</th><th>Montant vendu</th></tr></thead>
+          <tbody id="vend-classement-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
     </div>
     <!-- Dashboard RH -->
     <div id="rh-dashboard">
@@ -1149,7 +1193,7 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
   </div>
 
   <div class="card" style="margin-top:8px">
-    <button class="btn bfull" style="background:var(--r);color:#fff" onclick="doLogout()">⏻ Se déconnecter</button>
+    <button class="btn bfull" style="background:var(--r);color:#fff" onclick="confirmLogout()">⏻ Se déconnecter</button>
   </div>
 </div>
 
@@ -1252,7 +1296,8 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
     <div class="mhandle"></div>
     <div class="mhdr"><div class="mtitle">🛍 Enregistrer une vente</div><button class="mclose" onclick="closeM('m-vente')">✕</button></div>
     <input type="hidden" id="v-eid">
-    <div class="fg">
+    <div class="v-gen">
+    <div class="fg v-g-vend">
       <label>Vendeur (N° ou nom) <span style="font-size:11px;color:var(--mu)">(ex: 1 ou Moussa)</span></label>
       <div style="position:relative"><input type="text" id="v-vendnum" placeholder="N° ou nom du vendeur" autocomplete="off" oninput="lookupVendeur()" onfocus="lookupVendeur()" onblur="setTimeout(function(){var e=document.getElementById('v-vend-sug');if(e)e.style.display='none';},200)"><div id="v-vend-sug" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:50;background:var(--card);border:1px solid var(--br);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:200px;overflow:auto"></div></div>
       <div id="v-vendnom" style="font-size:12px;color:var(--g);margin-top:3px;font-weight:600"></div>
@@ -1263,12 +1308,14 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
     </div>
     <div class="fg"><label>Nom Client *</label><input type="text" id="v-cnom" placeholder="Nom du client"></div>
     <div class="fg"><label>Adresse Client</label><input type="text" id="v-caddr" placeholder="Adresse"></div>
-    <div style="margin:11px 0 9px">
+    </div>
+    <div class="v-arts-titre" style="margin:11px 0 9px">
       <div style="font-size:14px;font-weight:700">Article(s) vendu(s)</div>
     </div>
     <div id="arts-container"></div>
-    <button class="btn bg bsm" onclick="addArtRow()" style="width:100%;margin-bottom:11px">+ Ajouter un article</button>
-    <div class="fg"><label>Total ($) <span style="font-size:11px;color:var(--mu)">(TTC — ce que paie le client)</span></label><input type="number" id="v-total" class="auto-b" readonly></div>
+    <button class="btn bg bsm v-add-art" onclick="addArtRow()" style="width:100%;margin-bottom:11px">+ Ajouter un article</button>
+    <div class="v-pay">
+    <div class="fg v-p-total"><label>Total ($) <span style="font-size:11px;color:var(--mu)">(TTC — ce que paie le client)</span></label><input type="number" id="v-total" class="auto-b" readonly></div>
     <div id="v-tva-detail" style="display:none;background:var(--bg);border-radius:8px;padding:9px;margin-bottom:11px;font-size:12px">
       <div style="display:flex;justify-content:space-between;padding:2px 0"><span>Prix HT</span><span id="v-ht-val" style="font-weight:600">0.00</span></div>
       <div style="display:flex;justify-content:space-between;padding:2px 0;color:var(--o)"><span>TVA (<span id="v-tva-taux-val">0</span>%)</span><span id="v-tva-val" style="font-weight:600">0.00</span></div>
@@ -1278,6 +1325,7 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
       <div class="fg"><label>Avance ($)</label><input type="number" id="v-avance" step="0.01" placeholder="0.00" value="0.00" oninput="document.getElementById('v-avance').dataset.touched='1';calcResteVente()"></div>
       <div class="fg"><label>Reste à payer ($)</label><input type="number" id="v-reste" class="auto-r" readonly value="0.00"></div>
     </div>
+    </div>
     <div id="v-comm-wrap" style="display:none;background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.25);border-radius:10px;padding:11px;margin-bottom:11px">
       <div style="font-weight:700;color:var(--p);margin-bottom:8px">💼 Commission</div>
       <div id="v-comm-body"></div>
@@ -1285,7 +1333,7 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
     <div class="fg" id="v-recouv-wrap" style="display:none">
       <label>Date recouvrement</label><input type="date" id="v-recouv-date">
     </div>
-    <div class="brow">
+    <div class="brow v-actions">
       <button class="btn bp" onclick="saveVente()">✅ Enregistrer la vente</button>
       <button class="btn bo" onclick="closeM('m-vente')">Annuler</button>
     </div>
@@ -13820,7 +13868,7 @@ function handleBackupFile(event){
 function switchG(mode,el){
   gMode=mode;
   ['stocks','fournisseurs','vendeurs','clients','charges','wallet','budget','proformas','rh','commissions'].forEach(m=>{const el=document.getElementById('gv-'+m);if(el)el.style.display=m===mode?'block':'none';});
-  document.querySelectorAll('#pg-gestion > .tabs .tab').forEach(t=>t.className='tab');
+  document.querySelectorAll('#g-nav .tab').forEach(t=>t.className='tab');
   el.className='tab act';
   if(mode==='stocks')renderStocks();
   if(mode==='fournisseurs')renderFournisseurs();
@@ -13861,7 +13909,7 @@ function goP(id,el){
   if(id==='recouv')renderRecouv();
   if(id==='comptes'){renderComptesTab();}
   if(id==='inventaire'){renderInvTab();}
-  if(id==='gestion'){const tabs=document.querySelectorAll('#pg-gestion > .tabs .tab');if(tabs.length)switchG(gMode,tabs[0]);}
+  if(id==='gestion'){const tabs=document.querySelectorAll('#g-nav .tab');if(tabs.length)switchG(gMode,Array.from(tabs).find(function(t){return (t.getAttribute('onclick')||'').indexOf("switchG('"+gMode+"'")>=0;})||tabs[0]);}
   if(id==='rapports')renderAdvStats();
   if(id==='parametres'){renderBoutiquesPageParam();updateProfileDisplay();document.getElementById('p-name').value=DB.user.name||'';document.getElementById('p-email').value=DB.user.email||'';['rccm','ifu','tel','adr'].forEach(function(k){const el=document.getElementById('p-'+k);if(el)el.value=DB.user[k]||'';});renderCycleInfo();}
   // Sécurité : vérifier que le vendeur connecté a bien le droit d'accéder à cette page
@@ -13936,6 +13984,7 @@ function doLogout(){
   currentSession=null;
   try{resetEtatInterface();}catch(e){}
   try{if(typeof emFermer==='function')emFermer();}catch(e){}
+  try{gMode='stocks';rhTab='dashboard';const z=document.getElementById('rh-vendeurs');if(z)z.style.display='none';}catch(e){}
   try{
     const vn=document.getElementById('v-vendnum');if(vn){vn.readOnly=false;vn.value='';}
     ['login-pwd','login-vendeur-numero'].forEach(function(i){const el=document.getElementById(i);if(el)el.value='';});
@@ -13959,13 +14008,13 @@ const MODULES_DISPONIBLES=[
   {key:'gestion',label:'📦 Gestion (accès général)',navId:'gestion'},
   {key:'gestion_stocks',label:'📦 Gestion → Stocks',gestionTab:'stocks'},
   {key:'gestion_fournisseurs',label:'🚚 Gestion → Fournisseurs',gestionTab:'fournisseurs'},
-  {key:'gestion_vendeurs',label:'🧑‍💼 Gestion → Vendeurs',gestionTab:'vendeurs'},
+  {key:'gestion_vendeurs',label:'🧑‍💼 Gestion → RH → Vendeurs & accès',gestionTab:'vendeurs'},
   {key:'gestion_clients',label:'👥 Gestion → Clients',gestionTab:'clients'},
   {key:'gestion_charges',label:'💸 Gestion → Charges',gestionTab:'charges'},
   {key:'gestion_wallet',label:'💳 Gestion → Wallet',gestionTab:'wallet'},
   {key:'gestion_budget',label:'💰 Gestion → Budget',gestionTab:'budget'},
   {key:'gestion_proformas',label:'📋 Gestion → Proformas',gestionTab:'proformas'},
-  {key:'gestion_rh',label:'👥 Gestion → RH',gestionTab:'rh'},
+  {key:'gestion_rh',label:'👥 Gestion → RH (personnel)',gestionTab:'rh'},
   {key:'gestion_comptes',label:'🏦 Gestion → Comptes',gestionTab:null,navId:'comptes'},
   {key:'gestion_inventaire',label:'🔍 Gestion → Inventaire',gestionTab:null,navId:'inventaire'},
   {key:'gestion_rapports',label:'📊 Gestion → Rapports',gestionTab:null,navId:'rapports'},
@@ -13992,7 +14041,7 @@ function applyRolePermissions(){
     // pour un vendeur précédent dans la même session navigateur.
     document.querySelectorAll('.gerant-only').forEach(function(el){el.style.display='';});
     document.querySelectorAll('.bni').forEach(function(btn){btn.style.display='';});
-    document.querySelectorAll('#pg-gestion .tabs .tab').forEach(function(tab){tab.style.display='';});
+    document.querySelectorAll('#g-nav .tab').forEach(function(tab){tab.style.display='';});
     return;
   }
   // Rôle Vendeur : appliquer les permissions individuelles configurées par le gérant
@@ -14007,7 +14056,7 @@ function applyRolePermissions(){
   });
   // Restreindre les onglets de Gestion selon les permissions individuelles
   // (certains onglets utilisent switchG(), d'autres goP() directement — les deux sont couverts)
-  document.querySelectorAll('#pg-gestion .tabs .tab').forEach(function(tab){
+  document.querySelectorAll('#g-nav .tab').forEach(function(tab){
     const onclickAttr=tab.getAttribute('onclick')||'';
     const mod=MODULES_DISPONIBLES.find(function(m){
       return(m.gestionTab&&onclickAttr.indexOf("'"+m.gestionTab+"'")>=0)||
@@ -15972,6 +16021,147 @@ function openRHAvanceModal(employeId){
   const sel=document.getElementById('bc-ch-sel');
   if(employeId&&sel.querySelector('option[value="e:'+employeId+'"]')){sel.value='e:'+employeId;bcSal='avance';bcChSel();}
 }
+// ===== NAVIGATION GESTION UNIFORME =====
+// Cause du défaut : Stocks…RH s'affichent DANS la page Gestion (switchG), alors que Comptes, Inventaire, Rapports et
+// Recouvrement sont des pages séparées (goP) : en les ouvrant, la page Gestion — et donc sa barre — était masquée.
+// Correction : la barre unique #g-nav (jamais dupliquée) est placée en haut de la page affichée, quelle qu'elle soit.
+var G_PAGES_SUP={comptes:1,inventaire:1,rapports:1,recouv:1};
+function gNavPlacer(id){
+  const bar=document.getElementById('g-nav');if(!bar)return;
+  if(id==='gestion'){const mm=document.getElementById('mm-summary-card');if(mm&&bar.previousElementSibling!==mm)mm.after(bar);}
+  else{const p=document.getElementById('pg-'+id);if(p&&p.firstElementChild!==bar)p.insertBefore(bar,p.firstElementChild);}
+}
+function gNavActif(id){
+  const bar=document.getElementById('g-nav');if(!bar)return;
+  const cle=id==='gestion'?"switchG('"+gMode+"'":"goP('"+id+"'";
+  bar.querySelectorAll('.tab').forEach(function(t){t.className=(t.getAttribute('onclick')||'').indexOf(cle)>=0?'tab act':'tab';});
+  // L'entrée « Gestion » de la navigation principale reste sélectionnée dans tous les sous-modules
+  const nav=Array.from(document.querySelectorAll('.bni')).find(function(b){return (b.getAttribute('onclick')||'').indexOf("goP('gestion'")>=0;});
+  if(nav){document.querySelectorAll('.bni').forEach(function(b){b.classList.remove('active');});nav.classList.add('active');}
+}
+(function(){
+  const _goPNav=goP;
+  goP=function(id){
+    const gest=id==='gestion'||G_PAGES_SUP[id];
+    if(gest)gNavPlacer(id); // avant l'affichage : la page Gestion retrouve sa barre avant d'ouvrir le sous-module
+    const r=_goPNav.apply(this,arguments);
+    if(gest){gNavActif(id);window.scrollTo(0,0);}
+    return r;
+  };
+  const _switchGNav=switchG;
+  switchG=function(mode,el){
+    const pg=document.getElementById('pg-gestion');
+    // Depuis Comptes / Inventaire / Rapports / Recouvrement : on revient dans Gestion sur le bon sous-module
+    if(pg&&!pg.classList.contains('active')){gMode=mode;goP('gestion',null);return;}
+    const r=_switchGNav.apply(this,arguments);
+    gNavActif('gestion');
+    return r;
+  };
+})();
+// ===== ENTRÉE (STOCK) : FORMULAIRE PROPRE APRÈS CHAQUE ENREGISTREMENT =====
+// Cause du défaut : après un enregistrement réussi, seuls quelques champs étaient vidés tout de suite (nom, quantité, prix…).
+// Le reste (seuil, téléphone fournisseur, prix de revient, marges, reste fournisseur, identifiant de modification…) n'était
+// effacé que 0,45 s plus tard, et pas du tout si la fenêtre était rouverte entre-temps : ces valeurs restaient alors affichées.
+// Correction : dès que l'enregistrement a réussi (la fenêtre s'est fermée), la remise à zéro complète existante est appliquée.
+// En cas d'échec (fenêtre restée ouverte), rien n'est effacé.
+(function(){
+  const _saveEntreePropre=saveEntree;
+  saveEntree=function(){
+    const m=document.getElementById('m-entree'),ouverte=!!m&&m.classList.contains('open');
+    const r=_saveEntreePropre.apply(this,arguments);
+    if(ouverte&&m&&!m.classList.contains('open')){try{resetFormModal('m-entree');}catch(e){console.error('reset entrée',e);}}
+    return r;
+  };
+})();
+// ===== FUSION « VENDEURS » DANS « RH » =====
+// L'interface Vendeurs (comptes, mots de passe, autorisations, classement) est désormais le sous-onglet « Vendeurs & accès » de RH.
+// Données, identifiants, fonctions et clés d'autorisation inchangés (DB.vendeurs, gestion_vendeurs, gestion_rh).
+function rhDroits(){
+  if(!currentSession||currentSession.role!=='vendeur')return{rh:true,vend:true};
+  const p=getVendeurPermissions(getVendeurByNumero(currentSession.numero));
+  return{rh:!!p.gestion_rh,vend:!!p.gestion_vendeurs};
+}
+function rhOnglet(nom){return Array.from(document.querySelectorAll('#rh-tabs .tab')).find(function(t){return (t.getAttribute('onclick')||'').indexOf("switchRH('"+nom+"'")>=0;});}
+function rhAppliquerDroits(){
+  const d=rhDroits();
+  const nav=Array.from(document.querySelectorAll('#g-nav .tab')).find(function(t){return (t.getAttribute('onclick')||'').indexOf("switchG('rh'")>=0;});
+  if(nav)nav.style.display=(d.rh||d.vend)?'':'none'; // RH visible si l'un des deux droits est accordé
+  document.querySelectorAll('#rh-tabs .tab').forEach(function(t){
+    const v=(t.getAttribute('onclick')||'').indexOf("switchRH('vendeurs'")>=0;
+    t.style.display=(v?d.vend:d.rh)?'':'none';
+  });
+}
+(function(){
+  const _arpRH=applyRolePermissions;
+  applyRolePermissions=function(){const r=_arpRH.apply(this,arguments);try{rhAppliquerDroits();}catch(e){console.error(e);}return r;};
+  const _srhRH=switchRH;
+  switchRH=function(tab,el){
+    const d=rhDroits();
+    if(tab==='vendeurs'&&!d.vend){toast('⛔ Accès non autorisé à la gestion des vendeurs','❌');return;}
+    if(tab!=='vendeurs'&&!d.rh){if(d.vend){tab='vendeurs';el=rhOnglet('vendeurs');}else{toast('⛔ Accès non autorisé','❌');return;}}
+    const zone=document.getElementById('rh-vendeurs'),gv=document.getElementById('gv-vendeurs');
+    if(tab==='vendeurs'){
+      rhTab='vendeurs';
+      ['dashboard','employes','pointage','conges','evaluations'].forEach(function(t){const x=document.getElementById('rh-'+t);if(x)x.style.display='none';});
+      if(zone)zone.style.display='block';if(gv)gv.style.display='block';
+      document.querySelectorAll('#rh-tabs .tab').forEach(function(t){t.className='tab';});
+      const o=el||rhOnglet('vendeurs');if(o)o.className='tab act';
+      renderVendeurs();
+      return;
+    }
+    if(zone)zone.style.display='none';
+    return _srhRH.call(this,tab,el||rhOnglet(tab));
+  };
+  const _sgRH=switchG;
+  switchG=function(mode,el){
+    if(mode==='vendeurs'){ // anciens liens vers « Vendeurs » : ouvrent RH → Vendeurs & accès
+      const t=Array.from(document.querySelectorAll('#g-nav .tab')).find(function(x){return (x.getAttribute('onclick')||'').indexOf("switchG('rh'")>=0;});
+      rhTab='vendeurs';return switchG('rh',t);
+    }
+    if(mode==='rh'&&currentSession&&currentSession.role==='vendeur'){const d=rhDroits();if(!d.rh&&!d.vend){
+      // Aucun droit RH : on n'affiche jamais RH (même si c'était le dernier onglet ouvert par le gérant) → premier onglet autorisé
+      const gv=document.getElementById('gv-rh');if(gv)gv.style.display='none';
+      const z=document.getElementById('rh-vendeurs');if(z)z.style.display='none';
+      const autre=Array.from(document.querySelectorAll('#g-nav .tab')).find(function(t){const o=t.getAttribute('onclick')||'';return t.style.display!=='none'&&o.indexOf("switchG('")>=0&&o.indexOf("switchG('rh'")<0;});
+      if(autre){const m=(autre.getAttribute('onclick').match(/switchG\('([^']+)'/)||[])[1];if(m)return switchG(m,autre);}
+      toast('⛔ Accès non autorisé','❌');return;}}
+    const r=_sgRH.apply(this,arguments);
+    if(mode==='rh'&&document.getElementById('pg-gestion').classList.contains('active')){
+      const d=rhDroits();let t=rhTab||'dashboard';
+      if(t==='vendeurs'&&!d.vend)t='dashboard';if(t!=='vendeurs'&&!d.rh)t='vendeurs';
+      switchRH(t,rhOnglet(t));
+    }
+    return r;
+  };
+})();
+// ===== EN-TÊTE : NOM ET LOGO DE LA BOUTIQUE ACTIVE =====
+// Source unique : la boutique active du système existant (DB.curB → shop()). Nom = shop().name ; logo = shop().photo
+// (photo enregistrée dans la fiche de la boutique : Profil → Mes Boutiques → ✏️). Nom et logo viennent toujours de la même boutique.
+// Sans logo (ou image illisible) : icône par défaut du logiciel. Sans nom : nom du profil, sinon « Daga's Manager ».
+var ENTETE_ICONE_DEFAUT=(function(){const e=document.getElementById('tb-logo-default');return e?e.outerHTML:'';})();
+function entetePoserIconeDefaut(){const w=document.getElementById('tb-logo-wrap');if(w)w.innerHTML=ENTETE_ICONE_DEFAUT;}
+function majEnteteBoutique(){
+  const b=shop()||{};
+  const nom=(b.name&&String(b.name).trim())||((DB.user&&DB.user.name)||'').trim()||'Daga\'s Manager';
+  const n=document.getElementById('tb-app-name');if(n){n.textContent=nom;n.title=nom;}
+  const w=document.getElementById('tb-logo-wrap');if(!w)return;
+  if(b.photo){
+    const img=new Image();img.alt=nom;
+    img.style.cssText='width:100%;height:100%;object-fit:contain;display:block;background:#fff';
+    img.onerror=entetePoserIconeDefaut; // jamais d'image cassée
+    img.src=b.photo;
+    w.innerHTML='';w.appendChild(img);
+  }else entetePoserIconeDefaut();
+  // Le nom de la boutique est désormais le titre : la ligne secondaire ne le répète pas
+  const sb=document.getElementById('tb-shop');if(sb)sb.textContent=sb.textContent.replace(nom,'').replace(/^\s*—\s*/,'');
+}
+(function(){
+  const _rsbE=renderSB;renderSB=function(){const r=_rsbE.apply(this,arguments);try{majEnteteBoutique();}catch(e){console.error(e);}return r;};
+  updateHeaderPhoto=function(){try{majEnteteBoutique();}catch(e){console.error(e);}};
+  const _uanE=updateAppNameDisplay;updateAppNameDisplay=function(){const r=_uanE.apply(this,arguments);try{majEnteteBoutique();}catch(e){}return r;};
+  const _arpE=applyRolePermissions;applyRolePermissions=function(){const r=_arpE.apply(this,arguments);try{majEnteteBoutique();}catch(e){}return r;};
+})();
+try{majEnteteBoutique();}catch(e){}
 lkDemarrer(function(){licDemarrer(checkLockOnStartup);});
 renderLicAdmin();
 // Splash Screen : affiché au maximum 2 secondes, pendant que le reste du chargement
