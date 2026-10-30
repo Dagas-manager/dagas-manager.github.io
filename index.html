@@ -1462,7 +1462,7 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
       <div id="recu-devise-options" style="display:none">
         <div class="frow">
           <div class="fg"><label>Devise reçu</label>
-            <select id="recu-devise" onchange="updateFacturePreview()">
+            <select id="recu-devise" onchange="majTauxInfoRecu();updateFacturePreview()">
               <option value="FC">FC Franc Congolais</option>
               <option value="FCFA">FCFA</option>
               <option value="€">€ Euro</option>
@@ -1471,12 +1471,12 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
             </select>
           </div>
           <div class="fg"><label>Taux (1 $ = ?)</label>
-            <input type="number" id="recu-taux" step="0.01" placeholder="ex: 2370" oninput="updateFacturePreview()">
+            <input type="number" id="recu-taux" step="0.01" placeholder="ex: 2370" oninput="majTauxInfoRecu();updateFacturePreview()">
           </div>
         </div>
         <div style="font-size:12px;color:var(--mu)" id="recu-taux-info">Ex: 1 $ = 2370 FC</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
-          <label for="recu-double-devise" style="font-size:13px;font-weight:600">Afficher les deux devises <span style="font-weight:400;font-size:11px;color:var(--mu)">(montants dans la devise de la boutique + total converti)</span></label>
+          <label for="recu-double-devise" style="font-size:13px;font-weight:600">Afficher les deux devises <span style="font-weight:400;font-size:11px;color:var(--mu)">(montants dans la devise choisie + total rappelé dans la devise de la boutique)</span></label>
           <input type="checkbox" id="recu-double-devise" style="width:20px;height:20px;accent-color:var(--b);flex-shrink:0" onchange="updateFacturePreview()">
         </div>
       </div>
@@ -7211,9 +7211,15 @@ function toggleDeviseRecu(cb){
   if(cb.checked){
     const s=shop();
     document.getElementById('recu-taux').value=s.taux||1;
-    document.getElementById('recu-taux-info').textContent='1 '+s.devise+' = '+(s.taux||1)+' '+(document.getElementById('recu-devise').value||'FC');
+    majTauxInfoRecu();
   }
   updateFacturePreview();
+}
+// Rappel du taux réellement saisi (ex. « 1 $ = 2400 FC »)
+function majTauxInfoRecu(){
+  const el=document.getElementById('recu-taux-info');if(!el)return;
+  const s=shop(),t=parseFloat((document.getElementById('recu-taux')||{}).value)||s.taux||1;
+  el.textContent='1 '+s.devise+' = '+t+' '+((document.getElementById('recu-devise')||{}).value||'FC');
 }
 function updateFacturePreview(){
   if(!curFacture)return;
@@ -7238,9 +7244,9 @@ function getDeviseRecu(){
   if(!changeDevis)return{devise:s.devise,taux:1,changed:false};
   const deviseRecu=document.getElementById('recu-devise').value||s.devise;
   const tauxRecu=parseFloat(document.getElementById('recu-taux').value)||s.taux||1;
-  // « Deux devises » : tout reste dans la devise de la boutique, seul le total est aussi donné dans la devise choisie
+  // « Deux devises » : le reçu est dans la devise choisie, et le total est aussi rappelé entre parenthèses dans la devise de la boutique
   const dbl=document.getElementById('recu-double-devise');
-  if(dbl&&dbl.checked&&deviseRecu!==s.devise)return{devise:s.devise,taux:1,changed:false,double:{devise:deviseRecu,taux:tauxRecu}};
+  if(dbl&&dbl.checked&&deviseRecu!==s.devise)return{devise:deviseRecu,taux:tauxRecu,changed:true,double:{devise:s.devise,taux:1/tauxRecu}};
   return{devise:deviseRecu,taux:tauxRecu,changed:true};
 }
 function convertMontant(montant,deviseInfo){
