@@ -359,8 +359,8 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
       <button id="login-tab-vendeur" onclick="setLoginRole('vendeur')" style="flex:1;padding:9px;border:none;border-radius:8px;background:transparent;color:#6B7280;font-weight:700;font-size:13px;cursor:pointer">🧑‍💼 Vendeur</button>
     </div>
     <div id="login-vendeur-numero-wrap" style="display:none;margin-bottom:11px">
-      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#1F2937">N° Vendeur</label>
-      <input type="text" id="login-vendeur-numero" placeholder="Ex: 1" style="width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:14px;outline:none">
+      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#1F2937">Identifiant vendeur</label>
+      <input type="text" id="login-vendeur-numero" autocapitalize="characters" autocomplete="off" placeholder="Ex : A1 (lettre de la boutique + numéro)" style="width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:14px;outline:none">
     </div>
     <div style="margin-bottom:6px">
       <label id="login-pwd-label" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#1F2937">Mot de passe</label>
@@ -8376,8 +8376,8 @@ function saveCommande(){
 // ============================================================
 let vendTab='liste',vendClassPeriode='jour';
 function vendeursS(){return DB.vendeurs.filter(function(v){return v.boutique===DB.curB;});}
-function getNextVendeurNumero(){
-  const all=vendeursS();
+function getNextVendeurNumero(boutiqueId){
+  const all=boutiqueId?(DB.vendeurs||[]).filter(function(v){return v.boutique===boutiqueId;}):vendeursS();
   if(!all.length)return '1';
   const max=all.reduce(function(m,v){const n=parseInt(v.numero)||0;return n>m?n:m;},0);
   return String(max+1);
@@ -8526,7 +8526,7 @@ function renderVendeurs(){
   var rows='';
   all.forEach(function(v){
     rows+='<tr>';
-    rows+='<td style="font-weight:700;color:var(--b)">'+v.numero+'</td>';
+    rows+='<td style="font-weight:700;color:var(--b)">'+vendCode(v)+'</td>';
     rows+='<td>'+v.nom+' '+(v.prenom||'')+'</td>';
     rows+='<td>'+(v.tel||'—')+'</td>';
     rows+='<td>'+(v.addr||'—')+'</td>';
@@ -13016,7 +13016,7 @@ function syncEmployeVersVendeur(emp){
     vendeur.photo=emp.photo;vendeur.statutRH=emp.statut;
   } else {
     // Créer automatiquement la fiche Vendeur liée, avec un mot de passe temporaire à changer
-    const numero=getNextVendeurNumero();
+    const numero=getNextVendeurNumero(emp.succursaleId||DB.curB);
     vendeur={id:uid(),boutique:emp.succursaleId||DB.curB,numero,nom:emp.nom,prenom:emp.prenom,tel:emp.tel,addr:emp.addr,dateInt:emp.dateEmbauche,pwdHash:dcmHash('1234'),photo:emp.photo,statutRH:emp.statut,permissions:getDefaultPermissions(),employeId:emp.id};
     DB.vendeurs.push(vendeur);
     emp.vendeurId=vendeur.id;
@@ -14586,9 +14586,9 @@ function doLogin(){
     }
   } else {
     const numero=document.getElementById('login-vendeur-numero').value.trim();
-    if(!numero){errEl.textContent='❌ Entrez votre numéro de vendeur';errEl.style.display='block';return;}
-    const memeNum=DB.vendeurs.filter(function(v){return parseInt(v.numero)===parseInt(numero);});
-    if(!memeNum.length){errEl.textContent='❌ Numéro de vendeur introuvable';errEl.style.display='block';return;}
+    if(!numero){errEl.textContent='❌ Entrez votre identifiant (ex : A1)';errEl.style.display='block';return;}
+    const memeNum=vendTrouverParCode(numero);
+    if(!memeNum.length){errEl.textContent='❌ Identifiant introuvable (ex : A1 = boutique A, vendeur 1)';errEl.style.display='block';return;}
     const vendeur=memeNum.find(function(v){return vendPwdOk(v,pwd);});
     if(!vendeur){errEl.textContent='❌ Mot de passe incorrect';errEl.style.display='block';return;}
     if(vendeur.boutique&&DB.boutiques.some(function(b){return b.id===vendeur.boutique;}))DB.curB=vendeur.boutique;
@@ -18029,5 +18029,819 @@ async function clActionSupprimerCopies(){
 
 (function(){const _g=goP;goP=function(id){const r=_g.apply(this,arguments);if(id==="parametres"){try{clAfficher();}catch(e){}}return r;};})();
 </script>
+<script type="text/dcm-defer">
+// ===== ACCÈS DES VENDEURS PAR BOUTIQUE =====
+// Chaque boutique a une lettre (A, B, C…) ; l'identifiant d'un vendeur = lettre + numéro (A1, A2, B1…).
+// Un vendeur ne voit que SA boutique. Pour passer dans une autre boutique, il doit entrer l'identifiant et le mot de passe
+// que le gérant lui a attribués pour cette boutique-là.
+const VD_LETTRES='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function bLettresAssurer(){
+  let change=false;const prises={};
+  (DB.boutiques||[]).forEach(function(b){if(b.lettre&&!prises[b.lettre])prises[b.lettre]=1;else if(b.lettre){b.lettre='';}});
+  (DB.boutiques||[]).forEach(function(b){if(!b.lettre){for(let i=0;i<26;i++){const l=VD_LETTRES[i];if(!prises[l]){b.lettre=l;prises[l]=1;change=true;break;}}}});
+  return change;
+}
+function bLettre(id){const b=(DB.boutiques||[]).find(function(x){return x.id===id;});if(b&&!b.lettre)bLettresAssurer();return b?(b.lettre||''):'';}
+function vendCode(v){return v?bLettre(v.boutique)+String(v.numero):'';}
+// « A1 », « a 1 », « A-1 » → vendeurs de la boutique A ayant le n° 1 ; un numéro seul (ancien format) reste accepté
+function vendTrouverParCode(code){
+  const t=String(code||'').toUpperCase().replace(/[\s\-_.]/g,''),m=t.match(/^([A-Z])(\d+)$/);
+  if(m){const b=(DB.boutiques||[]).find(function(x){return bLettre(x.id)===m[1];});if(!b)return [];return (DB.vendeurs||[]).filter(function(v){return v.boutique===b.id&&parseInt(v.numero)===parseInt(m[2]);});}
+  if(/^\d+$/.test(t))return (DB.vendeurs||[]).filter(function(v){return parseInt(v.numero)===parseInt(t);});
+  return [];
+}
+try{if(bLettresAssurer())save();}catch(e){}
+(function(){
+  const _sb=saveBoutique;saveBoutique=function(){const r=_sb.apply(this,arguments);try{if(bLettresAssurer())save();}catch(e){}return r;};
+  // Formulaire vendeur : identifiant complet affiché (A3), le numéro seul est enregistré
+  const _ov=openVendeurModal;openVendeurModal=function(){const r=_ov.apply(this,arguments);const e=document.getElementById('vd-numero');if(e)e.value=bLettre(DB.curB)+getNextVendeurNumero();return r;};
+  const _ev=editVendeur;editVendeur=function(id){const r=_ev.apply(this,arguments);const v=DB.vendeurs.find(function(x){return x.id===id;});const e=document.getElementById('vd-numero');if(e&&v)e.value=vendCode(v);return r;};
+  const _sv=saveVendeur;saveVendeur=function(){const e=document.getElementById('vd-numero');if(e)e.value=String(e.value||'').replace(/\D/g,'');return _sv.apply(this,arguments);};
+  // Changement de boutique : réservé au gérant, ou au vendeur qui a un accès (identifiant + mot de passe) dans la boutique visée
+  const _sw=switchB;switchB=function(id){
+    if(currentSession&&currentSession.role==='vendeur'){
+      const v=DB.vendeurs.find(function(x){return x.id===currentSession.vendeurId;});
+      if(v&&v.boutique===id){closeM('m-boutiques');return;}
+      vdDemanderAcces(id);return;
+    }
+    return _sw.apply(this,arguments);
+  };
+  window.__vdSwitchB=_sw;
+  // Liste des boutiques : un vendeur ne voit que la sienne et celles où il a un accès
+  const _rbm=renderBoutiquesModal;renderBoutiquesModal=function(){
+    const r=_rbm.apply(this,arguments);
+    const btn=document.querySelector('#m-boutiques .btn.bp.bfull');
+    if(currentSession&&currentSession.role==='vendeur'){
+      if(btn)btn.style.display='none';
+      const autres=vdBoutiquesAccessibles();
+      document.getElementById('boutiques-list').innerHTML=(DB.boutiques||[]).filter(function(b){return b.id===DB.curB||autres.indexOf(b.id)>=0;}).map(function(b){
+        const ici=b.id===DB.curB;
+        return '<div onclick="switchB(\''+b.id+'\')" style="display:flex;align-items:center;gap:9px;padding:10px;border-radius:10px;cursor:pointer;margin-bottom:6px;background:'+(ici?'rgba(37,99,235,.07)':'transparent')+';border:'+(ici?'1.5px solid var(--b)':'1px solid var(--br)')+'">'
+          +'<div style="width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;background:var(--bg)">'+bLettre(b.id)+'</div>'
+          +'<div style="flex:1"><div style="font-size:15px;font-weight:600">'+_de(b.name||'Boutique')+'</div><div style="font-size:12px;color:var(--mu)">'+(ici?'Votre boutique actuelle':'🔒 Mot de passe de cette boutique demandé')+'</div></div>'+(ici?'<span style="color:var(--b);font-size:18px">✓</span>':'<span>🔒</span>')+'</div>';
+      }).join('')+'<div style="font-size:11px;color:var(--mu);margin-top:6px">Vous ne voyez que les boutiques où le gérant vous a donné un accès.</div>';
+    } else if(btn)btn.style.display='';
+    // Gérant : afficher la lettre de chaque boutique
+    if(!(currentSession&&currentSession.role==='vendeur'))document.querySelectorAll('#boutiques-list > div').forEach(function(el,i){const b=DB.boutiques[i];if(b){const t=el.querySelector('div[style*="font-size:15px"]');if(t&&t.textContent.indexOf('['+bLettre(b.id)+']')<0)t.insertAdjacentHTML('afterbegin','<span class="tag tag-info" style="margin-right:6px">'+bLettre(b.id)+'</span>');}});
+    return r;
+  };
+})();
+function vdNorm(t){return String(t||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ');}
+// Boutiques où la même personne (même nom et prénom) a aussi un identifiant
+function vdBoutiquesAccessibles(){
+  if(!currentSession||currentSession.role!=='vendeur')return [];
+  const v=DB.vendeurs.find(function(x){return x.id===currentSession.vendeurId;});if(!v)return [];
+  const cle=vdNorm(v.nom)+'|'+vdNorm(v.prenom);
+  const out=[];(DB.vendeurs||[]).forEach(function(x){if(x.id!==v.id&&x.boutique!==v.boutique&&vdNorm(x.nom)+'|'+vdNorm(x.prenom)===cle&&out.indexOf(x.boutique)<0)out.push(x.boutique);});
+  return out;
+}
+function vdDemanderAcces(boutiqueId){
+  const b=(DB.boutiques||[]).find(function(x){return x.id===boutiqueId;});if(!b)return;
+  let ov=document.getElementById('m-vd-acces');
+  if(!ov){ov=document.createElement('div');ov.className='ovl';ov.id='m-vd-acces';document.body.appendChild(ov);}
+  ov.innerHTML='<div class="modal" style="max-width:380px"><div class="mhandle"></div><div class="mhdr"><div class="mtitle">🔒 Accès à '+_de(b.name||'la boutique')+'</div><button class="mclose" onclick="closeM(\'m-vd-acces\')">✕</button></div>'
+    +'<div style="font-size:13px;color:var(--mu);margin-bottom:10px">Entrez l\'identifiant et le mot de passe que le gérant vous a donnés pour <b>cette boutique</b>.</div>'
+    +'<div class="fg"><label>Identifiant</label><input type="text" id="vda-code" autocapitalize="characters" autocomplete="off" value="'+bLettre(boutiqueId)+'" placeholder="Ex : '+bLettre(boutiqueId)+'1"></div>'
+    +'<div class="fg"><label>Mot de passe</label><input type="password" id="vda-pwd" onkeydown="if(event.key===\'Enter\')vdValiderAcces(\''+boutiqueId+'\')"></div>'
+    +'<div id="vda-err" style="display:none;color:var(--r);font-size:12px;font-weight:600;margin-bottom:8px"></div>'
+    +'<div class="brow"><button class="btn bp" onclick="vdValiderAcces(\''+boutiqueId+'\')">🔓 Entrer</button><button class="btn bo" onclick="closeM(\'m-vd-acces\')">Annuler</button></div></div>';
+  closeM('m-boutiques');openM('m-vd-acces');
+  setTimeout(function(){const i=document.getElementById('vda-code');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},150);
+}
+function vdValiderAcces(boutiqueId){
+  const code=(document.getElementById('vda-code')||{}).value||'',pwd=(document.getElementById('vda-pwd')||{}).value||'';
+  const err=document.getElementById('vda-err');
+  const bloque=(typeof licEssaisBloque==='function')?licEssaisBloque():0;
+  if(bloque){err.textContent='Trop d\'essais. Réessayez dans '+bloque+' min.';err.style.display='block';return;}
+  const cand=vendTrouverParCode(code).filter(function(v){return v.boutique===boutiqueId;});
+  const v=cand.find(function(x){return vendPwdOk(x,pwd);});
+  if(!v){try{licEchec();}catch(e){}err.textContent=cand.length?'❌ Mot de passe incorrect':'❌ Cet identifiant n\'existe pas dans cette boutique';err.style.display='block';return;}
+  try{licReussite();}catch(e){}
+  closeM('m-vd-acces');
+  currentSession={role:'vendeur',vendeurId:v.id,numero:v.numero,nom:v.nom+' '+(v.prenom||'')};
+  window.__vdSwitchB(boutiqueId);
+  try{applyRolePermissions();}catch(e){}
+  try{const vn=document.getElementById('v-vendnum');if(vn)vn.value=v.numero;}catch(e){}
+  toast('✅ Connecté à '+(((DB.boutiques||[]).find(function(x){return x.id===boutiqueId;})||{}).name||'la boutique')+' ('+vendCode(v)+')');
+}
+// Sécurité : une session vendeur reste toujours dans la boutique de ce vendeur
+setInterval(function(){try{if(currentSession&&currentSession.role==='vendeur'){const v=DB.vendeurs.find(function(x){return x.id===currentSession.vendeurId;});if(v&&DB.curB!==v.boutique&&window.__vdSwitchB)window.__vdSwitchB(v.boutique);}}catch(e){}},3000);
+</script>
+<script type="text/dcm-defer">
+// ===== MOT DE PASSE DES EMPLOYÉS = LETTRE DE LA BOUTIQUE + suite choisie par le gérant (A…, B…, C…) =====
+// - Formulaire vendeur : la lettre de la boutique est posée automatiquement, le gérant complète le reste.
+// - Un employé qui touche une autre boutique voit une petite bande : il tape le mot de passe de CETTE boutique.
+// - Le gérant passe partout sans mot de passe.
+function vdLettreForm(){const eid=(document.getElementById('vd-eid')||{}).value;const v=eid?DB.vendeurs.find(function(x){return x.id===eid;}):null;return bLettre(v?v.boutique:DB.curB)||'A';}
+function vdPrefixeMaj(){
+  const inp=document.getElementById('vd-pwd');if(!inp)return;
+  let pre=document.getElementById('vd-pwd-pre');
+  if(!pre){
+    const w=document.createElement('div');w.style.cssText='display:flex;align-items:stretch;gap:0';
+    inp.parentNode.insertBefore(w,inp);
+    pre=document.createElement('span');pre.id='vd-pwd-pre';
+    pre.style.cssText='display:flex;align-items:center;justify-content:center;min-width:44px;font-weight:800;font-size:16px;background:var(--b);color:#fff;border-radius:8px 0 0 8px;padding:0 10px';
+    w.appendChild(pre);w.appendChild(inp);inp.style.borderRadius='0 8px 8px 0';inp.style.flex='1';
+    const h=document.createElement('div');h.id='vd-pwd-aide';h.style.cssText='font-size:11px;color:var(--mu);margin-top:4px';w.parentNode.insertBefore(h,w.nextSibling);
+  }
+  const l=vdLettreForm(),eid=(document.getElementById('vd-eid')||{}).value;
+  pre.textContent=l;
+  inp.placeholder=eid?'Laisser vide pour ne pas changer':'Complétez (3 caractères min.)';
+  const h=document.getElementById('vd-pwd-aide');if(h)h.innerHTML='Le mot de passe commence toujours par <b>'+l+'</b> (lettre de la boutique). Exemple : <b>'+l+'</b>4821 → l\'employé tape « '+l+'4821 ».';
+}
+(function(){
+  const _ov=openVendeurModal;openVendeurModal=function(){const r=_ov.apply(this,arguments);try{vdPrefixeMaj();}catch(e){}return r;};
+  const _ev=editVendeur;editVendeur=function(){const r=_ev.apply(this,arguments);try{vdPrefixeMaj();}catch(e){}return r;};
+  const _sv=saveVendeur;saveVendeur=function(){
+    const inp=document.getElementById('vd-pwd');
+    if(!inp)return _sv.apply(this,arguments);
+    const suite=inp.value,eid=(document.getElementById('vd-eid')||{}).value;
+    if(suite){
+      if(suite.length<3){toast('Complétez le mot de passe : au moins 3 caractères après la lettre','❌');return;}
+      inp.value=vdLettreForm()+suite;
+    } else if(!eid){toast('Complétez le mot de passe de l\'employé','❌');return;}
+    try{return _sv.apply(this,arguments);}finally{inp.value='';}
+  };
+  // Changement de boutique par un employé : petite bande « mot de passe de cette boutique »
+  vdDemanderAcces=function(id){
+    const row=document.querySelector('#boutiques-list [data-vdb="'+id+'"]');
+    if(!row||!document.getElementById('m-boutiques').classList.contains('open')){openM('m-boutiques');renderBoutiquesModal();setTimeout(function(){vdBande(id);},50);return;}
+    vdBande(id);
+  };
+  const _rbm=renderBoutiquesModal;renderBoutiquesModal=function(){
+    const r=_rbm.apply(this,arguments);
+    if(!(currentSession&&currentSession.role==='vendeur'))return r;
+    const v=DB.vendeurs.find(function(x){return x.id===currentSession.vendeurId;});
+    document.getElementById('boutiques-list').innerHTML=(DB.boutiques||[]).map(function(b){
+      const ici=b.id===DB.curB;
+      return '<div data-vdb="'+b.id+'" style="margin-bottom:6px;border-radius:10px;border:'+(ici?'1.5px solid var(--b)':'1px solid var(--br)')+';background:'+(ici?'rgba(37,99,235,.07)':'transparent')+'">'
+        +'<div onclick="switchB(\''+b.id+'\')" style="display:flex;align-items:center;gap:9px;padding:10px;cursor:pointer">'
+        +'<div style="width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;background:var(--bg)">'+bLettre(b.id)+'</div>'
+        +'<div style="flex:1"><div style="font-size:15px;font-weight:600">'+_de(b.name||'Boutique')+'</div><div style="font-size:12px;color:var(--mu)">'+(ici?'Votre boutique actuelle':'🔒 Mot de passe de cette boutique demandé')+'</div></div>'
+        +(ici?'<span style="color:var(--b);font-size:18px">✓</span>':'<span>🔒</span>')+'</div></div>';
+    }).join('');
+    return r;
+  };
+})();
+function vdBande(id){
+  document.querySelectorAll('.vd-bande').forEach(function(e){e.remove();});
+  const row=document.querySelector('#boutiques-list [data-vdb="'+id+'"]');if(!row)return;
+  const l=bLettre(id);
+  row.insertAdjacentHTML('beforeend','<div class="vd-bande" style="padding:0 10px 10px"><div style="display:flex;gap:6px"><input type="password" id="vdb-pwd" placeholder="Mot de passe ('+l+'…)" autocomplete="off" style="flex:1;border:1.5px solid var(--br);border-radius:8px;padding:9px;background:var(--card);color:var(--tx)" onkeydown="if(event.key===\'Enter\')vdBandeValider(\''+id+'\')"><button class="btn bp bsm" onclick="vdBandeValider(\''+id+'\')">🔓 Entrer</button></div><div id="vdb-err" style="display:none;color:var(--r);font-size:12px;font-weight:600;margin-top:5px"></div></div>');
+  setTimeout(function(){const i=document.getElementById('vdb-pwd');if(i)i.focus();},60);
+}
+function vdBandeValider(id){
+  const pwd=(document.getElementById('vdb-pwd')||{}).value||'',err=document.getElementById('vdb-err');
+  const msg=function(t){if(err){err.textContent=t;err.style.display='block';}};
+  const bloque=(typeof licEssaisBloque==='function')?licEssaisBloque():0;
+  if(bloque){msg('Trop d\'essais. Réessayez dans '+bloque+' min.');return;}
+  if(!pwd){msg('Entrez le mot de passe de cette boutique');return;}
+  const moi=currentSession?DB.vendeurs.find(function(x){return x.id===currentSession.vendeurId;}):null;
+  const cle=moi?vdNorm(moi.nom)+'|'+vdNorm(moi.prenom):'';
+  const cand=(DB.vendeurs||[]).filter(function(v){return v.boutique===id&&vendPwdOk(v,pwd);});
+  const v=cand.find(function(x){return vdNorm(x.nom)+'|'+vdNorm(x.prenom)===cle;})||cand[0];
+  if(!v){try{licEchec();}catch(e){}const l=bLettre(id);msg(pwd.charAt(0).toUpperCase()!==l?'❌ Le mot de passe de cette boutique commence par « '+l+' »':'❌ Mot de passe incorrect');return;}
+  try{licReussite();}catch(e){}
+  closeM('m-boutiques');
+  currentSession={role:'vendeur',vendeurId:v.id,numero:v.numero,nom:v.nom+' '+(v.prenom||'')};
+  document.querySelectorAll('.vd-bande').forEach(function(e){e.remove();});
+  window.__vdSwitchB(id);
+  try{applyRolePermissions();}catch(e){}
+  try{const vn=document.getElementById('v-vendnum');if(vn)vn.value=v.numero;}catch(e){}
+  toast('✅ Bienvenue dans '+(((DB.boutiques||[]).find(function(x){return x.id===id;})||{}).name||'la boutique'));
+}
+</script>
+<script type="text/dcm-defer">
+// ===== 🔄 SYNCHRONISATION ENTRE APPAREILS (étape 2 du cloud) =====
+// Principe : chaque appareil garde TOUTES ses données (100 % hors ligne). À chaque enregistrement, il note
+// uniquement ce qui a changé (ajout / modification d'un champ / suppression) dans une « boîte d'envoi ».
+// Dès qu'il y a internet, ces petits paquets sont CHIFFRÉS (même clé que les sauvegardes) et déposés dans
+// le dossier du compte ; les autres appareils les récupèrent et les appliquent.
+// - Les quantités de stock sont fusionnées en +/− (deux ventes simultanées sur 2 appareils sont toutes les deux comptées).
+// - Les autres champs : la modification la plus récente gagne (champ par champ, pas fiche entière).
+// - Une « base » (photo complète chiffrée) est gardée pour les nouveaux appareils et pour faire le ménage.
+// - Rien de local à l'appareil n'est partagé : boutique ouverte, thème, mots de passe en clair.
+// Le serveur ne voit que des fichiers illisibles (chiffrement de bout en bout).
+var SY={meta:null,prev:null,capT:null,pushT:null,pullT:null,enCours:null,applique:false,aRafraichir:false,dernierToast:0,charge:null};
+const SY_LOCAL={curB:1,theme:1};
+const SY_DELTA={stocks:{qte:1,qteInitiale:1,qteVendue:1},clients:{totalAchats:1}};
+SY.max=120; // au-delà : on refait une base et on efface les vieux paquets
+function syDev(){return clAppareil();}
+function syMetaVide(){return {v:1,on:null,joint:false,base:'',applied:[],ft:{},tomb:{},outbox:[],hlc:0,dernier:0,erreur:''};}
+// --- Petit stockage IndexedDB dédié (la boîte d'envoi ne doit pas dépendre du quota localStorage) ---
+function syIdb(){return new Promise(function(res,rej){try{const r=indexedDB.open('dcm_sync',1);r.onupgradeneeded=function(){r.result.createObjectStore('kv');};r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};}catch(e){rej(e);}});}
+function syMetaLire(){return syIdb().then(function(db){return new Promise(function(res){const tx=db.transaction('kv','readonly');const q=tx.objectStore('kv').get('meta');q.onsuccess=function(){res(q.result||null);};q.onerror=function(){res(null);};});}).catch(function(){try{return JSON.parse(localStorage.getItem('dcm_sync_meta')||'null');}catch(e){return null;}});}
+let syEcrT=null;
+function syMetaEcrire(){
+  const m=SY.meta;if(!m)return Promise.resolve();
+  return syIdb().then(function(db){return new Promise(function(res){const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(m,'meta');tx.oncomplete=function(){res();};tx.onerror=function(){res();};});})
+    .catch(function(){try{localStorage.setItem('dcm_sync_meta',JSON.stringify(m));}catch(e){}});
+}
+// --- Horloge hybride : toujours croissante, et jamais en retard sur ce qu'on a reçu des autres appareils ---
+function syHash(s){let h=0;s=String(s);for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%997;return h;}
+function syHeure(){const m=SY.meta;let t=Date.now();if(t<=Math.floor(m.hlc))t=Math.floor(m.hlc)+1;m.hlc=t;return t+syHash(syDev())/1000;}
+function syVoir(ts){const m=SY.meta;if(ts>m.hlc)m.hlc=Math.floor(ts);}
+// --- Vue « partageable » de la base : collections (listes de fiches) + objets/valeurs simples ---
+function syReplacer(k){
+  if(k==='user'||k==='vendeurs')return function(key,v){return key==='pwd'?undefined:v;};
+  if(k==='config')return function(key,v){return key==='alertesLues'?undefined:v;};
+  return null;
+}
+function syEstColl(v){return Array.isArray(v)&&v.every(function(x){return x&&typeof x==='object'&&!Array.isArray(x);});}
+function syCle(o){return o._sid!=null?String(o._sid):String(o.id);}
+// Chaque fiche doit avoir un identifiant stable (les bilans n'en ont pas : on leur en donne un discret « _sid »)
+function syAssurerIds(){
+  let change=false;
+  Object.keys(DB).forEach(function(k){
+    if(SY_LOCAL[k])return;const v=DB[k];if(!syEstColl(v)||!v.length)return;
+    const vu={};
+    v.forEach(function(o){
+      const c=(o._sid!=null)?String(o._sid):(o.id!=null&&o.id!==''?String(o.id):null);
+      if(c==null||vu[c]){o._sid=uid()+Math.random().toString(36).slice(2,5);change=true;}
+      vu[syCle(o)]=1;
+    });
+  });
+  return change;
+}
+// Instantané léger : une chaîne JSON par clé (comparaison rapide)
+function syInstantane(){
+  const out={};
+  Object.keys(DB).forEach(function(k){if(SY_LOCAL[k]||k.charAt(0)==='_')return;const v=DB[k];if(v===undefined||typeof v==='function')return;try{out[k]=JSON.stringify(v,syReplacer(k));}catch(e){}});
+  return out;
+}
+function syParse(s){return s==null?undefined:JSON.parse(s);}
+function syEgal(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+// Différence entre deux états d'une clé → opérations
+function syDiffCle(k,avant,apres,ts,ops){
+  const A=syParse(avant),B=syParse(apres);
+  if(syEstColl(B)&&(A===undefined||syEstColl(A))){
+    const ma={};(A||[]).forEach(function(o){ma[syCle(o)]=o;});
+    const vus={};
+    B.forEach(function(o){
+      const c=syCle(o);vus[c]=1;const a=ma[c];
+      if(!a){ops.push({c:k,i:c,o:'p',v:o,ts:ts});return;}
+      if(syEgal(a,o))return;
+      const champs={};Object.keys(a).forEach(function(f){champs[f]=1;});Object.keys(o).forEach(function(f){champs[f]=1;});
+      Object.keys(champs).forEach(function(f){
+        if(syEgal(a[f],o[f]))return;
+        const dl=SY_DELTA[k]&&SY_DELTA[k][f];
+        if(dl&&typeof a[f]==='number'&&typeof o[f]==='number')ops.push({c:k,i:c,o:'n',f:f,v:Math.round((o[f]-a[f])*1e9)/1e9,ts:ts});
+        else ops.push({c:k,i:c,o:'s',f:f,v:o[f],u:o[f]===undefined?1:0,ts:ts});
+      });
+    });
+    Object.keys(ma).forEach(function(c){if(!vus[c])ops.push({c:k,i:c,o:'d',ts:ts});});
+    return;
+  }
+  // Objet simple (profil, réglages…) : champ par champ ; valeur simple : en bloc
+  if(A&&B&&typeof A==='object'&&typeof B==='object'&&!Array.isArray(A)&&!Array.isArray(B)){
+    const champs={};Object.keys(A).forEach(function(f){champs[f]=1;});Object.keys(B).forEach(function(f){champs[f]=1;});
+    Object.keys(champs).forEach(function(f){if(!syEgal(A[f],B[f]))ops.push({c:'@'+k,i:'_',o:'s',f:f,v:B[f],u:B[f]===undefined?1:0,ts:ts});});
+    return;
+  }
+  ops.push({c:'@',i:'_',o:'s',f:k,v:B,u:B===undefined?1:0,ts:ts});
+}
+// Noter les changements locaux (appelé juste après chaque enregistrement)
+function syCapturer(){
+  clearTimeout(SY.capT);SY.capT=null;
+  if(!syActifIci()||!SY.prev)return 0;
+  const idsAjoutes=syAssurerIds();
+  const cur=syInstantane(),ops=[];let ts=null;
+  const cles={};Object.keys(cur).forEach(function(k){cles[k]=1;});Object.keys(SY.prev).forEach(function(k){cles[k]=1;});
+  Object.keys(cles).forEach(function(k){
+    if(cur[k]===SY.prev[k])return;
+    if(ts==null)ts=syHeure();
+    try{syDiffCle(k,SY.prev[k],cur[k],ts,ops);}catch(e){console.error('sync diff',k,e);}
+  });
+  SY.prev=cur;
+  if(idsAjoutes){SY.applique=true;try{save();}finally{SY.applique=false;}}
+  if(!ops.length)return 0;
+  const m=SY.meta;
+  ops.forEach(function(op){
+    const kf=op.c+'|'+op.i+(op.f!=null?'|'+op.f:'');
+    if(op.o==='s')m.ft[kf]=op.ts;
+    else if(op.o==='p')m.ft[op.c+'|'+op.i]=op.ts;
+    else if(op.o==='d')m.tomb[op.c+'|'+op.i]=op.ts;
+  });
+  m.outbox.push.apply(m.outbox,ops);
+  syMetaEcrire();
+  syPlanifierEnvoi(2500);
+  return ops.length;
+}
+// --- Appliquer des opérations venues d'un autre appareil ---
+function syTrouver(arr,i){for(let x=0;x<arr.length;x++){const o=arr[x];if(o&&syCle(o)===i)return x;}return -1;}
+function syGagne(cle,ts){const m=SY.meta;const t=m.ft[cle];if(t!=null&&t>ts)return false;m.ft[cle]=ts;return true;}
+function syAppliquerOps(ops){
+  const m=SY.meta;let n=0;
+  ops.forEach(function(op){
+    syVoir(op.ts);
+    if(op.c.charAt(0)==='@'){
+      if(op.c==='@'){
+        if(SY_LOCAL[op.f])return;
+        if(!syGagne('@|_|'+op.f,op.ts))return;
+        if(op.u)delete DB[op.f];else DB[op.f]=op.v;n++;return;
+      }
+      const k=op.c.slice(1);
+      if(!syGagne(op.c+'|_|'+op.f,op.ts))return;
+      if(!DB[k]||typeof DB[k]!=='object'||Array.isArray(DB[k]))DB[k]={};
+      if(op.u)delete DB[k][op.f];else DB[k][op.f]=op.v;n++;return;
+    }
+    const k=op.c,cr=k+'|'+op.i;
+    if(SY_LOCAL[k])return;
+    if(!Array.isArray(DB[k]))DB[k]=[];
+    const arr=DB[k];
+    if(op.o==='d'){
+      m.tomb[cr]=Math.max(m.tomb[cr]||0,op.ts);
+      const x=syTrouver(arr,op.i);if(x>=0){arr.splice(x,1);n++;}return;
+    }
+    if(m.tomb[cr]!=null)return; // supprimée ailleurs : on ne la ressuscite pas
+    const x=syTrouver(arr,op.i);
+    if(op.o==='p'){
+      if(x<0){arr.push(JSON.parse(JSON.stringify(op.v)));if((m.ft[cr]||0)<op.ts)m.ft[cr]=op.ts;n++;return;}
+      const o=arr[x];
+      Object.keys(op.v).forEach(function(f){if(syGagne(cr+'|'+f,op.ts)){o[f]=op.v[f];n++;}});
+      return;
+    }
+    if(x<0)return;
+    const o=arr[x];
+    if(op.o==='n'){o[op.f]=Math.round(((Number(o[op.f])||0)+op.v)*1e9)/1e9;n++;return;}
+    if(op.o==='s'){
+      const t=m.ft[cr+'|'+op.f]!=null?m.ft[cr+'|'+op.f]:m.ft[cr];
+      if(t!=null&&t>op.ts)return;
+      m.ft[cr+'|'+op.f]=op.ts;
+      if(op.u)delete o[op.f];else o[op.f]=op.v;n++;
+    }
+  });
+  return n;
+}
+function syApresChangement(n){
+  if(!n)return;
+  SY.applique=true;try{save();}finally{SY.applique=false;}
+  SY.prev=syInstantane();
+  try{if(!(DB.boutiques||[]).some(function(b){return b.id===DB.curB;})&&(DB.boutiques||[])[0])DB.curB=DB.boutiques[0].id;}catch(e){}
+  syRafraichir();
+  if(Date.now()-SY.dernierToast>60000){SY.dernierToast=Date.now();try{toast('🔄 Mis à jour depuis un autre appareil');}catch(e){}}
+}
+function syModalOuvert(){return !!document.querySelector('.modal.open,.mo.open,[id^="m-"].open');}
+function syRafraichir(){
+  const ae=document.activeElement;
+  if(syModalOuvert()||(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))){SY.aRafraichir=true;return;}
+  SY.aRafraichir=false;
+  try{updateShell();}catch(e){}
+  try{rafraichirPageActive();}catch(e){}
+}
+// --- Fichiers dans le cloud : {compte}/sync/o-….enc (paquets) et {compte}/sync/base-….enc (photo complète) ---
+function syPad(ts){return String(Math.floor(ts)).padStart(15,'0');}
+function syPrefixe(s){return s.user.id+'/sync/';}
+async function syLister(s){
+  const cf=clCfg(),out=[];let off=0;
+  for(let tour=0;tour<20;tour++){
+    const r=await clFetch('/storage/v1/object/list/'+cf.bucket,{method:'POST',headers:{Authorization:'Bearer '+s.access_token,'Content-Type':'application/json'},body:JSON.stringify({prefix:syPrefixe(s),limit:1000,offset:off,sortBy:{column:'name',order:'asc'}})});
+    const j=await clJson(r);if(!r.ok)throw new Error(clMsgErreur(j,'Lecture du cloud impossible'));
+    const L=(j||[]).filter(function(f){return f&&f.name&&/\.enc$/.test(f.name);});
+    out.push.apply(out,L.map(function(f){return f.name;}));
+    if(!j||j.length<1000)break;off+=1000;
+  }
+  return out.sort();
+}
+async function syDeposer(s,nom,obj){
+  const c=await clChiffrer(JSON.stringify(obj)),cf=clCfg();
+  const r=await clFetch('/storage/v1/object/'+cf.bucket+'/'+encodeURIComponent(s.user.id)+'/sync/'+nom,{method:'POST',headers:{Authorization:'Bearer '+s.access_token,'Content-Type':c.type,'x-upsert':'true','cache-control':'no-cache'},body:c.corps});
+  if(!r.ok){const j=await clJson(r);throw new Error(clMsgErreur(j,'Envoi refusé ('+r.status+')'));}
+}
+async function syTelecharger(s,nom){
+  const cf=clCfg();
+  const r=await clFetch('/storage/v1/object/authenticated/'+cf.bucket+'/'+encodeURIComponent(s.user.id)+'/sync/'+nom,{headers:{Authorization:'Bearer '+s.access_token,'cache-control':'no-cache'}});
+  if(r.status===404||r.status===400)return null;
+  if(!r.ok)throw new Error('Lecture du cloud impossible ('+r.status+')');
+  return JSON.parse(await clDechiffrer(await r.blob()));
+}
+function syDevDe(nom){const m=/^(?:o|base)-\d+-(.+?)(?:-[a-z0-9]{4})?\.enc$/.exec(nom);return m?m[1]:'';}
+// Base partageable : toute la base sans ce qui est propre à l'appareil
+function syBaseDB(){
+  const d={};
+  Object.keys(DB).forEach(function(k){if(SY_LOCAL[k]||k.charAt(0)==='_')return;const v=DB[k];if(v===undefined||typeof v==='function')return;d[k]=JSON.parse(JSON.stringify(v,syReplacer(k)));});
+  return d;
+}
+async function syEcrireBase(s,fichiers){
+  const ts=syHeure(),nom='base-'+syPad(ts)+'-'+syDev()+'.enc';
+  await syDeposer(s,nom,{v:1,app:'dagas-manager',dev:syDev(),ts:ts,files:fichiers,ft:SY.meta.ft,tomb:SY.meta.tomb,db:syBaseDB()});
+  return nom;
+}
+// Recharger depuis une base (nouvel appareil, ou après un ménage fait par un autre appareil)
+function syChargerBase(nom,b){
+  const m=SY.meta;
+  const local={};Object.keys(SY_LOCAL).forEach(function(k){if(DB[k]!==undefined)local[k]=DB[k];});
+  const pwd=DB.user&&DB.user.pwd,vpwd={};(DB.vendeurs||[]).forEach(function(v){if(v&&v.pwd)vpwd[v.id]=v.pwd;});
+  const alertes=DB.config&&DB.config.alertesLues;
+  const nouv=JSON.parse(JSON.stringify(b.db||{}));
+  Object.keys(local).forEach(function(k){nouv[k]=local[k];});
+  if(!Array.isArray(nouv.boutiques)||!nouv.boutiques.length)throw new Error('Base illisible');
+  if(nouv.user&&pwd&&nouv.user.pwdHash&&typeof dcmHash==='function'&&dcmHash(pwd)===nouv.user.pwdHash)nouv.user.pwd=pwd;
+  (nouv.vendeurs||[]).forEach(function(v){if(vpwd[v.id]&&v.pwdHash&&typeof dcmHash==='function'&&dcmHash(vpwd[v.id])===v.pwdHash)v.pwd=vpwd[v.id];});
+  if(alertes!==undefined){nouv.config=nouv.config||{};nouv.config.alertesLues=alertes;}
+  if(!nouv.boutiques.some(function(x){return x.id===nouv.curB;}))nouv.curB=nouv.boutiques[0].id;
+  DB=nouv;
+  m.ft=Object.assign({},b.ft||{});m.tomb=Object.assign({},b.tomb||{});m.applied=(b.files||[]).slice();m.base=nom;syVoir(b.ts||0);
+  // Les changements de cet appareil pas encore envoyés sont ré-appliqués par-dessus
+  const enAttente=m.outbox.slice();
+  if(enAttente.length)syAppliquerOps(enAttente);
+  SY.applique=true;try{save();}finally{SY.applique=false;}
+  SY.prev=syInstantane();
+}
+function syActifIci(){const m=SY.meta;return !!(m&&m.joint&&m.on!==false);}
+function syPret(){return clActif()&&!!clSession()&&clEtat().lie&&clMKPresente();}
+function syPretCompte(){return clActif()&&!!clSession()&&clMKPresente();} // connecté + déverrouillé (même si le choix « garder / remplacer » n'est pas encore fait)
+// --- Un tour de synchronisation : envoyer, puis recevoir ---
+async function syTour(){
+  if(SY.enCours)return SY.enCours;
+  SY.enCours=(async function(){
+    const m=SY.meta;if(!m||!syPretCompte()||!clEnLigne())return false;
+    if(m.joint&&!clEtat().lie)return false;
+    if(SY.capT)syCapturer();
+    const s=await clJeton();
+    let L=await syLister(s);
+    const bases=L.filter(function(n){return /^base-/.test(n);});
+    const derniereBase=bases[bases.length-1]||'';
+    // 1) Pas encore joint
+    if(!m.joint){
+      if(m.on===false)return false;
+      if(!derniereBase){
+        if(!clEtat().lie)return false; // le choix « garder / remplacer » du cloud se fait d'abord
+        // Premier appareil du compte : ses données deviennent la référence partagée
+        syAssurerIds();SY.applique=true;try{save();}finally{SY.applique=false;}
+        m.applied=L.filter(function(n){return /^o-/.test(n);});
+        m.base=await syEcrireBase(s,m.applied);m.joint=true;m.on=true;m.outbox=[];
+        SY.prev=syInstantane();await syMetaEcrire();syAfficher();return true;
+      }
+      if(!clDBVide()&&m.on!==true){m.attente=true;syAfficher();return false;} // l'utilisateur doit choisir
+      const b=await syTelecharger(s,derniereBase);if(!b)return false;
+      try{await snapshotInterne();}catch(e){}
+      m.outbox=[];syChargerBase(derniereBase,b);m.joint=true;m.on=true;m.attente=false;
+      clMajEtat({lie:true,modifie:true});try{clPlanifier(5000);}catch(e){}
+      await syMetaEcrire();
+    }
+    // 2) Une nouvelle base a été faite par un autre appareil (ménage) : on repart d'elle
+    if(derniereBase&&derniereBase!==m.base){
+      const b=await syTelecharger(s,derniereBase);
+      if(b){syChargerBase(derniereBase,b);syRafraichir();await syMetaEcrire();}
+    }
+    if(!derniereBase&&m.joint){
+      // Les fichiers de synchro ont été effacés (ex. « Supprimer mes copies ») : cet appareil refait la base
+      m.applied=[];m.base=await syEcrireBase(s,[]);await syMetaEcrire();L=await syLister(s);
+    }
+    // 3) Envoyer la boîte d'envoi
+    if(m.outbox.length){
+      const lot=m.outbox.slice(),ts=lot[lot.length-1].ts;
+      const nom='o-'+syPad(ts)+'-'+syDev()+'-'+Math.random().toString(36).slice(2,6).padEnd(4,'0')+'.enc';
+      await syDeposer(s,nom,{v:1,dev:syDev(),ops:lot});
+      m.outbox.splice(0,lot.length);m.applied.push(nom);L.push(nom);L.sort();
+      await syMetaEcrire();
+    }
+    // 4) Recevoir les paquets des autres appareils (dans l'ordre)
+    const fait={};m.applied.forEach(function(n){fait[n]=1;});
+    const nouveaux=L.filter(function(n){return /^o-/.test(n)&&!fait[n];});
+    let total=0;
+    if(nouveaux.length){
+      if(SY.capT)syCapturer();
+      for(const nom of nouveaux){
+        let paquet=null;try{paquet=await syTelecharger(s,nom);}catch(e){throw e;}
+        if(paquet&&Array.isArray(paquet.ops))total+=syAppliquerOps(paquet.ops);
+        m.applied.push(nom);
+      }
+      syApresChangement(total);
+      await syMetaEcrire();
+    }
+    // Garder la liste « déjà appliqués » courte : seulement ce qui existe encore
+    const existe={};L.forEach(function(n){existe[n]=1;});
+    m.applied=m.applied.filter(function(n){return existe[n];});
+    m.dernier=Date.now();m.erreur='';
+    // 5) Ménage : trop de paquets → nouvelle base, puis on efface les paquets qu'elle contient
+    const paquets=L.filter(function(n){return /^o-/.test(n);});
+    if(paquets.length>SY.max&&!m.outbox.length){
+      const inclus=m.applied.filter(function(n){return /^o-/.test(n);});
+      const nb=await syEcrireBase(s,inclus);
+      const L2=await syLister(s);
+      const bs=L2.filter(function(n){return /^base-/.test(n);});
+      if(bs[bs.length-1]===nb){
+        m.base=nb;
+        const pre=s.user.id+'/sync/';
+        const aEffacer=inclus.concat(bs.filter(function(n){return n!==nb;}));
+        try{await clSupprimer(s,aEffacer.map(function(n){return pre+n;}));}catch(e){}
+        const ex={};L2.forEach(function(n){ex[n]=1;});aEffacer.forEach(function(n){delete ex[n];});
+        m.applied=m.applied.filter(function(n){return ex[n];});
+      }
+    }
+    await syMetaEcrire();
+    return true;
+  })();
+  try{return await SY.enCours;}
+  catch(err){if(SY.meta){SY.meta.erreur=String(err.message||err);}return false;}
+  finally{SY.enCours=null;try{syAfficher();}catch(e){}}
+}
+function syPlanifierEnvoi(d){clearTimeout(SY.pushT);SY.pushT=setTimeout(function(){if(syActifIci()&&syPret()&&clEnLigne())syTour();},d==null?2500:d);}
+function syBoucle(){
+  clearTimeout(SY.pullT);
+  SY.pullT=setTimeout(function(){
+    const visible=typeof document==='undefined'||document.visibilityState!=='hidden';
+    if(SY.meta&&SY.meta.on!==false&&visible&&syPretCompte()&&clEnLigne())syTour().finally(syBoucle);else syBoucle();
+  },15000);
+}
+// --- Actions de l'utilisateur ---
+async function syActionRejoindre(){
+  if(!confirm('🔄 Synchroniser cet appareil avec les autres appareils du compte ?\n\nLes données de CET appareil seront REMPLACÉES par celles partagées du compte.\nUne copie de sécurité de ce téléphone est gardée dans « Copies automatiques récentes ».'))return;
+  SY.meta.on=true;SY.meta.attente=false;await syMetaEcrire();
+  toast('🔄 Synchronisation en cours…');
+  const ok=await syTour();
+  if(ok&&SY.meta.joint){toast('✅ Appareil synchronisé');syRafraichir();}
+  else toast('⚠️ '+(SY.meta.erreur||'Synchronisation impossible pour le moment'),'⚠️');
+}
+async function syActionSeparer(){
+  if(!confirm('Ne pas synchroniser cet appareil ?\n\nIl garde ses propres données (sauvegardées dans son propre dossier), sans recevoir celles des autres appareils.'))return;
+  SY.meta.on=false;SY.meta.attente=false;await syMetaEcrire();syAfficher();
+}
+async function syActionActiver(){SY.meta.on=null;SY.meta.attente=false;await syMetaEcrire();await syTour();syAfficher();}
+async function syActionMaintenant(){
+  if(!clEnLigne()){toast('Pas de connexion internet','❌');return;}
+  if(SY.capT)syCapturer();
+  const ok=await syTour();
+  toast(ok?'✅ Synchronisé':'⚠️ '+(SY.meta.erreur||'Synchronisation impossible'),ok?'✅':'⚠️');
+}
+function syAfficher(){
+  const box=document.getElementById('cloud-zone');if(!box)return;
+  let z=document.getElementById('sync-zone');
+  if(!clActif()||!clSession()||!SY.meta||(!clEtat().lie&&!SY.meta.attente)){if(z)z.remove();
+    if(SY.meta&&!SY.meta.joint&&SY.meta.on!==false&&!SY.enCours&&syPretCompte()&&clEnLigne()&&Date.now()-(SY.essai||0)>10000){SY.essai=Date.now();setTimeout(syTour,300);}
+    return;}
+  if(!z){z=document.createElement('div');z.id='sync-zone';z.style.cssText='margin-top:10px;border-top:1px solid var(--br);padding-top:10px';const dec=box.querySelector('button[onclick^="clActionDeconnexion"]');if(dec)box.insertBefore(z,dec);else box.appendChild(z);}
+  const m=SY.meta;let h='<div style="font-weight:700;font-size:14px;margin-bottom:6px">🔄 Synchronisation entre appareils</div>';
+  // Pas encore joint et tout est prêt (connexion, déverrouillage…) : on lance la préparation
+  if(!m.joint&&m.on!==false&&!m.attente&&!SY.enCours&&syPretCompte()&&clEnLigne()&&Date.now()-(SY.essai||0)>10000){SY.essai=Date.now();setTimeout(syTour,300);}
+  if(!clMKPresente()){h+='<div style="font-size:12px;color:var(--mu)">Déverrouillez d\'abord la sauvegarde en ligne.</div>';}
+  else if(m.on===false){
+    h+='<div style="font-size:12px;color:var(--mu);margin-bottom:7px">Désactivée sur cet appareil : il garde ses propres données.</div><button class="btn bo bsm" onclick="syActionActiver()">🔄 Activer la synchronisation</button>';
+  } else if(!m.joint&&m.attente){
+    h+='<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:10px;font-size:13px">⚠️ D\'autres appareils de ce compte sont déjà synchronisés.<br>Pour voir les mêmes données que eux, cet appareil doit <b>remplacer</b> ses données par celles du compte (une copie de sécurité est gardée).<div style="display:flex;flex-direction:column;gap:7px;margin-top:8px">'
+      +'<button class="btn bp" style="justify-content:center" onclick="syActionRejoindre()">🔄 Rejoindre la synchronisation</button>'
+      +'<button class="btn bo" style="justify-content:center" onclick="syActionSeparer()">📱 Garder cet appareil séparé</button></div></div>';
+  } else if(!m.joint){
+    h+='<div style="font-size:12px;color:var(--mu)">Préparation… (internet nécessaire)</div>';
+  } else {
+    const att=m.outbox.length;
+    h+='<div style="font-size:12px;color:var(--mu);margin-bottom:6px">Tous les appareils connectés à ce compte voient les mêmes données. Les changements partent dès qu\'il y a internet.</div>'
+      +'<div class="tbl-wrap"><table style="min-width:0"><tbody>'
+      +'<tr><td>Dernière synchronisation</td><td style="text-align:right;font-weight:700">'+clIlYa(m.dernier)+'</td></tr>'
+      +'<tr><td>Changements en attente d\'envoi</td><td style="text-align:right;font-weight:700;color:'+(att?'var(--o)':'var(--g)')+'">'+(att?att:'Aucun')+'</td></tr>'
+      +'</tbody></table></div>'
+      +(m.erreur?'<div style="font-size:12px;color:var(--r);margin:4px 0">⚠️ '+_de(m.erreur)+'</div>':'')
+      +'<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:6px"><button class="btn bp bsm" onclick="syActionMaintenant()">🔄 Synchroniser maintenant</button><button class="btn bo bsm" onclick="syActionSeparer()">Arrêter sur cet appareil</button></div>';
+  }
+  z.innerHTML=h;
+}
+// --- Branchements ---
+(function(){
+  const _s=save;
+  save=function(){
+    const r=_s.apply(this,arguments);
+    try{if(!SY.applique&&syActifIci()){clearTimeout(SY.capT);SY.capT=setTimeout(syCapturer,400);}}catch(e){}
+    return r;
+  };
+  // Nouveau téléphone vide qui se connecte : si le compte est déjà synchronisé, on rejoint directement la synchro
+  const _ac=clApresConnexion;
+  clApresConnexion=async function(){
+    try{
+      await SY.charge;
+      if(clDBVide()&&clMKPresente()&&SY.meta&&!SY.meta.joint&&SY.meta.on!==false){
+        const s=await clJeton(),L=await syLister(s);
+        if(L.some(function(n){return /^base-/.test(n);})){
+          clMajEtat({lie:true,modifie:true});SY.meta.on=true;
+          const ok=await syTour();
+          if(ok&&SY.meta.joint){clPlanifier(5000);clAfficher();toast('🔄 Données du compte récupérées (synchronisation)');return;}
+        }
+      }
+    }catch(e){}
+    const r=await _ac.apply(this,arguments);
+    setTimeout(function(){if(SY.meta&&SY.meta.on!==false&&syPretCompte()&&clEnLigne())syTour();},1500);
+    return r;
+  };
+  const _g=clActionGarder;clActionGarder=async function(){if(SY.meta){SY.meta.on=false;SY.meta.attente=false;await syMetaEcrire();}return _g.apply(this,arguments);};
+  // « Supprimer mes copies en ligne » : efface aussi les fichiers de synchronisation, et arrête la synchro sur cet appareil
+  const _sup=clActionSupprimerCopies;
+  clActionSupprimerCopies=async function(){
+    const avant=clEtat().auto;
+    const r=await _sup.apply(this,arguments);
+    try{
+      if(clEtat().auto===false&&avant!==false){
+        const s=await clJeton(),L=await syLister(s);
+        if(L.length)await clSupprimer(s,L.map(function(x){return s.user.id+'/sync/'+x;}));
+        if(SY.meta){SY.meta.on=false;SY.meta.joint=false;SY.meta.base='';SY.meta.applied=[];SY.meta.outbox=[];await syMetaEcrire();}
+        syAfficher();
+      }
+    }catch(e){}
+    return r;
+  };
+  const _a=clAfficher;clAfficher=function(){const r=_a.apply(this,arguments);try{syAfficher();}catch(e){}return r;};
+  const _c=closeM;closeM=function(){const r=_c.apply(this,arguments);try{if(SY.aRafraichir)setTimeout(function(){if(SY.aRafraichir)syRafraichir();},250);}catch(e){}return r;};
+  window.addEventListener('online',function(){setTimeout(function(){if(SY.meta&&SY.meta.on!==false&&syPret())syTour();},2500);});
+  document.addEventListener('visibilitychange',function(){
+    if(!SY.meta)return;
+    if(document.visibilityState==='hidden'){if(SY.capT)syCapturer();if(syActifIci()&&syPret()&&clEnLigne())syTour();}
+    else if(SY.meta.on!==false&&syPretCompte()&&clEnLigne())syTour();
+  });
+  document.addEventListener('focusout',function(){if(SY.aRafraichir)setTimeout(function(){const ae=document.activeElement;if(SY.aRafraichir&&!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)))syRafraichir();},400);});
+  SY.charge=syMetaLire().then(function(m){
+    SY.meta=Object.assign(syMetaVide(),m||{});
+    if(syActifIci()){
+      if(syAssurerIds()){SY.applique=true;try{save();}finally{SY.applique=false;}}
+    }
+    SY.prev=syInstantane();
+    syAfficher();
+    setTimeout(function(){if(SY.meta.on!==false&&syPretCompte()&&clEnLigne())syTour();},3000);
+    syBoucle();
+  });
+})();
+</script>
+
+<script type="text/dcm-defer">
+// ===== 🛒 COMMANDER VOTRE ACCÈS =====
+// Bouton visible au premier lancement (écran de licence / connexion) et dans Profil.
+// Les coordonnées (WhatsApp, Messenger, e-mail, lien de paiement) et les formules sont réglées par
+// l'administrateur DAGAS EMPIRE dans « 👑 Comptes clients » : elles sont stockées en ligne (table « reglages »,
+// lisible par tous, modifiable uniquement par l'administrateur) et gardées en mémoire pour le hors-ligne.
+// Le message envoyé ne contient AUCUNE donnée de la boutique (ventes, stock…) ni aucun mot de passe.
+const CMD_CACHE='dcm_commande_cfg';
+const CMD_DEFAUT={accueil:'Choisissez votre formule, puis commandez par le moyen qui vous arrange. Votre accès est activé dès réception du paiement.',whatsapp:'243845254323',messenger:'',email:'',lienPaiement:'',lienLibelle:'Payer en ligne',formules:[]};
+function cmdCfg(){let c=null;try{c=JSON.parse(localStorage.getItem(CMD_CACHE)||'null');}catch(e){}return Object.assign({},CMD_DEFAUT,(c&&c.data)||{});}
+function cmdGarder(d){try{localStorage.setItem(CMD_CACHE,JSON.stringify({data:d||{},le:Date.now()}));}catch(e){}}
+let cmdCharge=null;
+async function cmdCharger(){
+  if(!clActif()||!clEnLigne())return cmdCfg();
+  if(cmdCharge)return cmdCharge;
+  cmdCharge=(async function(){
+    try{
+      const r=await clFetch('/rest/v1/reglages?id=eq.1&select=data',{headers:{'cache-control':'no-cache'}});
+      const j=await clJson(r);
+      if(r.ok&&Array.isArray(j)&&j[0]&&j[0].data)cmdGarder(j[0].data);
+    }catch(e){}
+    return cmdCfg();
+  })();
+  try{return await cmdCharge;}finally{cmdCharge=null;}
+}
+function cmdNumero(t){return String(t||'').replace(/[^\d]/g,'');}
+function cmdMessenger(t){t=String(t||'').trim();if(!t)return '';if(/^https?:\/\//i.test(t))return t;return 'https://m.me/'+t.replace(/^@/,'').replace(/^(m\.me\/|facebook\.com\/|www\.facebook\.com\/)/i,'');}
+function cmdLien(t){t=String(t||'').trim();if(!t)return '';return /^https?:\/\//i.test(t)?t:'https://'+t;}
+let cmdChoix=-1;
+function cmdMessage(){
+  const c=cmdCfg(),f=(c.formules||[])[cmdChoix];
+  let em='';try{const s=clSession();em=s&&s.user&&s.user.email||'';}catch(e){}
+  let bout='';try{bout=(shop()||{}).name||'';}catch(e){}
+  let app='';try{app=clAppareil();}catch(e){}
+  return 'Bonjour DAGAS EMPIRE,\nJe souhaite commander mon accès à Daga\'s Manager.'
+    +(f?'\nFormule : '+f.nom+(f.prix?' — '+f.prix:''):'')
+    +(bout?'\nBoutique : '+bout:'')
+    +(em?'\nCompte (e-mail) : '+em:'')
+    +(app?'\nCode de l\'appareil : '+app:'')
+    +'\nMerci de m\'indiquer comment finaliser le paiement.';
+}
+function cmdRendre(){
+  const box=document.getElementById('cmd-corps');if(!box)return;
+  const c=cmdCfg(),F=c.formules||[];
+  if(cmdChoix>=F.length)cmdChoix=-1;
+  if(F.length===1&&cmdChoix<0)cmdChoix=0;
+  const msg=encodeURIComponent(cmdMessage()),sujet=encodeURIComponent('Commande Daga\'s Manager'+(F[cmdChoix]?' — '+F[cmdChoix].nom:''));
+  const wa=cmdNumero(c.whatsapp),me=cmdMessenger(c.messenger),em=String(c.email||'').trim(),pay=cmdLien(c.lienPaiement);
+  const bt=function(href,fond,txt,id){return '<a id="'+id+'" href="'+href+'" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;background:'+fond+';color:#fff;border-radius:10px;padding:12px;font-size:14px;font-weight:700;text-decoration:none">'+txt+'</a>';};
+  let h=c.accueil?'<div style="font-size:13px;color:#4B5563;line-height:1.5;margin-bottom:12px">'+_de(c.accueil)+'</div>':'';
+  if(F.length){
+    h+='<div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:6px">1. Choisissez votre formule</div><div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">'
+      +F.map(function(f,i){const on=i===cmdChoix;return '<div class="cmd-f" onclick="cmdChoix='+i+';cmdRendre()" style="cursor:pointer;border:2px solid '+(on?'#2563EB':'#E5E7EB')+';background:'+(on?'#EFF6FF':'#fff')+';border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;gap:10px;align-items:center"><div><div style="font-weight:700;color:#1F2937;font-size:14px">'+(on?'✅ ':'')+_de(f.nom)+'</div>'+(f.desc?'<div style="font-size:11px;color:#6B7280;margin-top:2px">'+_de(f.desc)+'</div>':'')+'</div><div style="font-weight:800;color:#2563EB;white-space:nowrap;font-size:14px">'+_de(f.prix||'')+'</div></div>';}).join('')+'</div>'
+      +'<div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:6px">2. Commandez ou payez</div>';
+  }
+  const btns=[];
+  if(pay)btns.push(bt(pay,'#2563EB','💳 '+_de(c.lienLibelle||'Payer en ligne'),'cmd-pay'));
+  if(wa)btns.push(bt('https://wa.me/'+wa+'?text='+msg,'#16A34A','🟢 Commander par WhatsApp','cmd-wa'));
+  if(me)btns.push(bt(me+(me.indexOf('?')>=0?'&':'?')+'text='+msg,'#0866FF','🔵 Commander par Messenger','cmd-me'));
+  if(em)btns.push(bt('mailto:'+encodeURIComponent(em)+'?subject='+sujet+'&body='+msg,'#6B7280','✉️ Commander par e-mail','cmd-mail'));
+  h+=btns.length?'<div style="display:flex;flex-direction:column;gap:8px">'+btns.join('')+'</div>':'<div style="font-size:13px;color:#B45309">Les moyens de commande ne sont pas encore configurés. Réessayez plus tard.</div>';
+  h+='<div style="font-size:11px;color:#9CA3AF;margin-top:12px;line-height:1.5">Après paiement, votre accès est activé à distance (ou une clé de licence vous est envoyée). Le message ne contient aucune donnée de votre boutique ni aucun mot de passe.</div>';
+  box.innerHTML=h;
+}
+async function cmdOuvrir(){
+  let ov=document.getElementById('cmd-ov');
+  if(!ov){
+    ov=document.createElement('div');ov.id='cmd-ov';
+    ov.style.cssText='position:fixed;inset:0;z-index:20020;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
+    ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:20px 18px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:92vh;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:18px;font-weight:800;color:#1F2937">🛒 Commander votre accès</div><button type="button" onclick="cmdFermer()" style="background:#F3F4F6;border:none;border-radius:8px;width:32px;height:32px;font-size:15px;cursor:pointer;color:#374151">✕</button></div><div id="cmd-corps"></div></div>';
+    ov.addEventListener('click',function(e){if(e.target===ov)cmdFermer();});
+    document.body.appendChild(ov);
+  }
+  cmdRendre();
+  await cmdCharger();cmdRendre();
+}
+function cmdFermer(){const ov=document.getElementById('cmd-ov');if(ov)ov.remove();}
+function cmdBoutonHTML(clair){return '<button type="button" class="cmd-btn" onclick="cmdOuvrir()" style="width:100%;background:'+(clair?'#F59E0B':'#F59E0B')+';color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;margin-top:10px">🛒 Commander votre accès</button>';}
+// --- Écran de connexion du compte : 2 boutons clairs « Créer mon compte » / « Connexion » ---
+// « Créer mon compte » crée le compte (clé de secours, etc. comme avant) PUIS ouvre « Commander votre accès ».
+function cmdPorteCloud(){
+  const g=document.getElementById('cl-gate');if(!g)return;
+  const bCo=g.querySelector('button[onclick="clPorteConnexion(false)"]'),bCr=g.querySelector('button[onclick="clPorteConnexion(true)"]');
+  if(bCo&&bCr){
+    if(g.getAttribute('data-cmd'))return;g.setAttribute('data-cmd','1');
+    bCr.innerHTML='➕ Créer mon compte';
+    bCr.style.cssText='width:100%;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700;margin-top:12px;cursor:pointer';
+    bCo.innerHTML='🔑 Connexion';
+    bCo.style.cssText='width:100%;background:#fff;color:#2563EB;border:1.5px solid #2563EB;border-radius:9px;padding:11px;font-size:14px;font-weight:700;margin-top:8px;cursor:pointer';
+    bCo.parentNode.insertBefore(bCr,bCo);
+    bCr.insertAdjacentHTML('afterend','<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:5px">Nouveau client : créez votre compte, puis commandez votre accès.</div>');
+    bCo.insertAdjacentHTML('afterend','<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:5px">Vous avez déjà un compte (par exemple sur un autre téléphone) : connectez-vous.</div>');
+    return;
+  }
+  // Compte suspendu / vérification : on garde le bouton de commande pour payer et être réactivé
+  if(!g.querySelector('.cmd-btn')){const b=g.querySelector('a[href^="https://wa.me"]');if(b)b.insertAdjacentHTML('afterend',cmdBoutonHTML());}
+}
+(function(){
+  const _pc=clPorteConnexion;
+  clPorteConnexion=async function(creer){
+    const r=await _pc.apply(this,arguments);
+    try{if(creer&&clSession())setTimeout(function(){cmdOuvrir();},400);}catch(e){}
+    return r;
+  };
+})();
+// --- Placement du bouton : écran de licence, écran de connexion cloud, Profil ---
+(function(){
+  const _lk=lkAfficherPorte;
+  lkAfficherPorte=function(){
+    const r=_lk.apply(this,arguments);
+    try{const g=document.getElementById('lk-gate');const btn=g&&g.querySelector('button[onclick="lkValider()"]');if(btn&&!g.querySelector('.cmd-btn'))btn.insertAdjacentHTML('afterend',cmdBoutonHTML());cmdCharger();}catch(e){}
+    return r;
+  };
+  const _cp=clPorte;
+  clPorte=function(){
+    const r=_cp.apply(this,arguments);
+    try{cmdPorteCloud();}catch(e){}
+    return r;
+  };
+  function profil(){
+    const a=document.getElementById('lic-admin');if(!a||document.getElementById('cmd-profil'))return;
+    a.insertAdjacentHTML('afterend','<div id="cmd-profil">'+cmdBoutonHTML()+'</div>');
+  }
+  function portes(){
+    const g=document.getElementById('lk-gate');const btn=g&&g.querySelector('button[onclick="lkValider()"]');if(btn&&!g.querySelector('.cmd-btn'))btn.insertAdjacentHTML('afterend',cmdBoutonHTML());
+    cmdPorteCloud();
+  }
+  try{profil();portes();cmdCharger();}catch(e){}
+  setTimeout(function(){try{profil();portes();}catch(e){}},1500);
+  setTimeout(function(){try{profil();portes();}catch(e){}},5000);
+})();
+// --- Espace administrateur : réglages de « Commander votre accès » ---
+const CMD_ST='border:1.5px solid var(--br);border-radius:8px;padding:9px;background:var(--card);color:var(--tx);font-size:14px;width:100%;min-width:0;box-sizing:border-box';
+function cmdAdminFormLigne(f){f=f||{};return '<div class="cmd-a-f" style="display:grid;grid-template-columns:1.3fr 1fr auto;gap:6px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--br)"><input type="text" class="cmd-a-nom" style="'+CMD_ST+'" placeholder="Nom (ex : 1 boutique — 1 mois)" value="'+_de(f.nom||'')+'"><input type="text" class="cmd-a-prix" style="'+CMD_ST+'" placeholder="Prix (ex : 15 $)" value="'+_de(f.prix||'')+'"><button type="button" class="btn bo bsm" onclick="this.parentNode.remove()">🗑</button><input type="text" class="cmd-a-desc" placeholder="Détail (facultatif)" value="'+_de(f.desc||'')+'" style="'+CMD_ST+';grid-column:1/4"></div>';}
+async function cmdAdminOuvrir(){
+  if(!clEstAdmin()){toast('Réservé à l\'administrateur','❌');return;}
+  let ov=document.getElementById('m-cmd-admin');
+  if(!ov){ov=document.createElement('div');ov.className='ovl';ov.id='m-cmd-admin';ov.innerHTML='<div class="modal" style="max-width:560px"><div class="mhandle"></div><div class="mhdr"><div class="mtitle">🛒 Réglages « Commander votre accès »</div><button class="mclose" onclick="closeM(\'m-cmd-admin\')">✕</button></div><div id="cmd-admin-corps"></div></div>';document.body.appendChild(ov);}
+  openM('m-cmd-admin');
+  const box=document.getElementById('cmd-admin-corps');box.innerHTML='<div class="empty"><div class="et">Chargement…</div></div>';
+  const c=await cmdCharger();
+  box.innerHTML='<div style="font-size:12px;color:var(--mu);margin-bottom:10px">Ces informations s\'affichent chez TOUS vos clients quand ils appuient sur « 🛒 Commander votre accès ». Laissez vide un moyen pour le cacher.</div>'
+    +'<div class="fg"><label>Message d\'accueil</label><textarea id="cmd-a-accueil" rows="2">'+_de(c.accueil||'')+'</textarea></div>'
+    +'<div class="fg"><label>🟢 Numéro WhatsApp (avec indicatif, ex : 243845254323)</label><input type="tel" id="cmd-a-wa" value="'+_de(c.whatsapp||'')+'"></div>'
+    +'<div class="fg"><label>🔵 Page Messenger / Facebook (nom de la page ou lien m.me)</label><input type="text" id="cmd-a-me" placeholder="ex : dagasempire" value="'+_de(c.messenger||'')+'"></div>'
+    +'<div class="fg"><label>✉️ E-mail de commande</label><input type="email" id="cmd-a-mail" value="'+_de(c.email||'')+'"></div>'
+    +'<div class="fg"><label>💳 Lien de paiement</label><input type="url" id="cmd-a-pay" placeholder="https://…" value="'+_de(c.lienPaiement||'')+'"></div>'
+    +'<div class="fg"><label>Texte du bouton de paiement</label><input type="text" id="cmd-a-paylib" value="'+_de(c.lienLibelle||'Payer en ligne')+'"></div>'
+    +'<div style="font-weight:700;font-size:13px;margin:12px 0 6px">📋 Formules et prix</div><div id="cmd-a-liste">'+(c.formules||[]).map(cmdAdminFormLigne).join('')+'</div>'
+    +'<button type="button" class="btn bo bsm" onclick="document.getElementById(\'cmd-a-liste\').insertAdjacentHTML(\'beforeend\',cmdAdminFormLigne())">➕ Ajouter une formule</button>'
+    +'<div id="cmd-a-err" style="display:none;color:var(--r);font-size:12px;font-weight:600;margin-top:10px"></div>'
+    +'<div class="brow" style="margin-top:14px"><button class="btn bo" onclick="cmdOuvrir()">👁 Aperçu</button><button class="btn bp" onclick="cmdAdminEnregistrer()">💾 Enregistrer pour tous les clients</button></div>';
+}
+function cmdAdminLire(){
+  const v=function(id){return ((document.getElementById(id)||{}).value||'').trim();};
+  const F=[];document.querySelectorAll('#cmd-a-liste .cmd-a-f').forEach(function(l){const nom=l.querySelector('.cmd-a-nom').value.trim();if(nom)F.push({nom:nom,prix:l.querySelector('.cmd-a-prix').value.trim(),desc:l.querySelector('.cmd-a-desc').value.trim()});});
+  return {accueil:v('cmd-a-accueil'),whatsapp:cmdNumero(v('cmd-a-wa')),messenger:v('cmd-a-me'),email:v('cmd-a-mail'),lienPaiement:v('cmd-a-pay'),lienLibelle:v('cmd-a-paylib')||'Payer en ligne',formules:F};
+}
+async function cmdAdminEnregistrer(){
+  const d=cmdAdminLire(),err=document.getElementById('cmd-a-err');
+  if(d.email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)){err.textContent='E-mail invalide';err.style.display='block';return;}
+  try{
+    const s=await clJeton();
+    const r=await clFetch('/rest/v1/reglages',{method:'POST',headers:{Authorization:'Bearer '+s.access_token,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=representation'},body:JSON.stringify({id:1,data:d,maj_le:new Date().toISOString()})});
+    const j=await clJson(r);
+    if(!r.ok||!Array.isArray(j)||!j.length){
+      const m=String((j&&(j.message||j.msg))||'');
+      throw new Error(/reglages|relation|schema cache/i.test(m)?'La table « reglages » n\'existe pas encore dans Supabase : exécutez d\'abord le code SQL fourni.':clMsgErreur(j,'Enregistrement refusé ('+r.status+')'));
+    }
+    cmdGarder(d);err.style.display='none';toast('✅ Réglages enregistrés pour tous les clients');
+  }catch(e){err.textContent='❌ '+e.message;err.style.display='block';}
+}
+(function(){
+  const _o=clAdminOuvrir;
+  clAdminOuvrir=async function(){
+    const p=_o.apply(this,arguments);
+    try{const m=document.getElementById('m-cloud-admin');if(m&&!m.querySelector('#cmd-admin-btn')){const s=m.querySelector('.sbox');if(s)s.insertAdjacentHTML('beforebegin','<button type="button" id="cmd-admin-btn" class="btn bsm" style="background:#F59E0B;color:#fff;margin-bottom:9px" onclick="cmdAdminOuvrir()">🛒 Réglages « Commander votre accès »</button>');}}catch(e){}
+    return p;
+  };
+})();
+</script>
+
 </body>
 </html>
