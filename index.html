@@ -1226,6 +1226,11 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
     <button class="btn bo bfull" style="margin-top:8px" onclick="document.getElementById('backup-file-input').click()">📥 Restaurer une sauvegarde</button>
   </div>
 
+  <div class="card" style="margin-top:8px;background:rgba(37,99,235,.04);border-color:rgba(37,99,235,.3)">
+    <div class="card-title" style="color:var(--b)">☁️ Sauvegarde en ligne (cloud)</div>
+    <div id="cloud-zone"></div>
+  </div>
+
   <div class="card" style="margin-top:8px">
     <div class="card-title">🆘 Support client</div>
     <div style="font-size:12px;color:var(--mu);margin-bottom:9px">Une question, un problème ? Contactez l'équipe Daga's Manager par WhatsApp ou par e-mail. Les informations de votre compte sont jointes automatiquement.</div>
@@ -17312,6 +17317,717 @@ if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
     try{history.back();}catch(e){}
   });
 })();
+</script>
+<script type="text/dcm-defer">
+// ===== ☁️ SAUVEGARDE EN LIGNE (Supabase) — étape 1 : sauvegarde automatique + restauration =====
+// Le logiciel reste 100 % hors ligne : le cloud n'est qu'une COPIE de sécurité, envoyée quand internet est là.
+// - Connexion par e-mail + mot de passe (Supabase Auth). Le mot de passe n'est jamais enregistré sur le téléphone.
+// - Chaque compte ne peut lire et écrire que son propre dossier (règles de sécurité Supabase).
+// - Chaque appareil (téléphone, ordinateur) a son propre dossier : compte/appareil/… (deux appareils ne s'écrasent jamais).
+// - « latest » = dernière copie ; une copie par jour est aussi gardée (retour en arrière possible) ;
+//   « resume » = petit résumé (ventes du jour, stock…) lu par le gérant dans « Mes boutiques en ligne ».
+// - Sécurité : sur un nouveau téléphone, rien n'est envoyé tant que l'utilisateur n'a pas choisi
+//   « Récupérer les données du cloud » ou « Garder les données de ce téléphone » (jamais d'écrasement par un téléphone vide).
+var DCM_CLOUD_DEFAUT={url:'https://atjcayycqhqguqftdoec.supabase.co',key:'sb_publishable_jnZhzQM2BhcwXsHe-Qp0ug_W8JGHH3R',bucket:'sauvegardes'}; // rempli par DAGAS EMPIRE (URL + clé publique « anon » du projet Supabase)
+const CL_SESSION='dcm_cloud_session',CL_ETAT='dcm_cloud_etat',CL_CFG='dcm_cloud_cfg',CL_APP='dcm_appareil_id';
+function clAppareil(){let a='';try{a=localStorage.getItem(CL_APP)||'';if(!a){a='app-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);localStorage.setItem(CL_APP,a);}}catch(e){a='app-inconnu';}return a;}
+function clNomAppareil(){const e=clEtat();if(e.nomAppareil)return e.nomAppareil;const ua=navigator.userAgent||'';return (/android/i.test(ua)?'Téléphone Android':(/iphone|ipad/i.test(ua)?'iPhone':(/windows/i.test(ua)?'Ordinateur Windows':(/mac/i.test(ua)?'Mac':'Appareil'))))+' — '+((shop()||{}).name||'Boutique');}
+function clCfg(){let c={};try{c=JSON.parse(localStorage.getItem(CL_CFG)||'{}')||{};}catch(e){}return {url:String(c.url||DCM_CLOUD_DEFAUT.url||'').replace(/\/+$/,''),key:c.key||DCM_CLOUD_DEFAUT.key||'',bucket:c.bucket||DCM_CLOUD_DEFAUT.bucket||'sauvegardes'};}
+function clActif(){const c=clCfg();return !!(c.url&&c.key);}
+function clLire(k){try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e){return null;}}
+function clEcrire(k,v){try{if(v==null)localStorage.removeItem(k);else localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+function clSession(){return clLire(CL_SESSION);}
+function clEtat(){return clLire(CL_ETAT)||{};}
+function clMajEtat(o){const e=Object.assign(clEtat(),o);clEcrire(CL_ETAT,e);return e;}
+function clEnLigne(){return typeof navigator==='undefined'||navigator.onLine!==false;}
+function clMsgErreur(j,defaut){
+  const m=String((j&&(j.error_description||j.msg||j.message||j.error))||defaut||'Erreur');
+  if(/invalid login|invalid_grant|invalid credentials/i.test(m))return 'E-mail ou mot de passe incorrect';
+  if(/already registered|already exists/i.test(m))return 'Ce compte existe déjà : utilisez « Se connecter »';
+  if(/password should be|at least 6/i.test(m))return 'Le mot de passe doit contenir au moins 6 caractères';
+  if(/email not confirmed/i.test(m))return 'Confirmez d\'abord votre e-mail (lien reçu par e-mail)';
+  if(/failed to fetch|network/i.test(m))return 'Pas de connexion internet';
+  return m;
+}
+async function clFetch(chemin,opt){
+  const c=clCfg();opt=opt||{};
+  const h=Object.assign({apikey:c.key},opt.headers||{});
+  let r;
+  try{r=await fetch(c.url+chemin,Object.assign({},opt,{headers:h}));}
+  catch(e){throw new Error('Pas de connexion internet');}
+  return r;
+}
+async function clJson(r){try{return await r.json();}catch(e){return null;}}
+function clGarderSession(j){
+  if(!j||!j.access_token)return null;
+  const s={access_token:j.access_token,refresh_token:j.refresh_token,expires_at:Date.now()+((Number(j.expires_in)||3600)-60)*1000,user:{id:j.user&&j.user.id,email:j.user&&j.user.email}};
+  clEcrire(CL_SESSION,s);return s;
+}
+async function clConnexion(email,mdp){
+  const r=await clFetch('/auth/v1/token?grant_type=password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:mdp})});
+  const j=await clJson(r);
+  if(!r.ok)throw new Error(clMsgErreur(j,'Connexion impossible'));
+  return clGarderSession(j);
+}
+async function clInscription(email,mdp){
+  const r=await clFetch('/auth/v1/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:mdp})});
+  const j=await clJson(r);
+  if(!r.ok)throw new Error(clMsgErreur(j,'Création du compte impossible'));
+  if(j&&j.access_token)return clGarderSession(j);
+  return null; // confirmation par e-mail demandée
+}
+async function clJeton(){
+  let s=clSession();if(!s)throw new Error('Non connecté au cloud');
+  if(Date.now()<s.expires_at)return s;
+  const r=await clFetch('/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:s.refresh_token})});
+  const j=await clJson(r);
+  if(!r.ok){if(r.status===400||r.status===401){clEcrire(CL_SESSION,null);}throw new Error(r.status===400||r.status===401?'Session expirée : reconnectez-vous':clMsgErreur(j));}
+  return clGarderSession(j);
+}
+// Données envoyées : toute la base, sans aucun mot de passe en clair (seules les empreintes, nécessaires pour se connecter après restauration)
+function clDonnees(){
+  const d=JSON.parse(JSON.stringify(DB));
+  if(d.user)delete d.user.pwd;
+  (d.vendeurs||[]).forEach(function(v){delete v.pwd;});
+  return {app:'dagas-manager',version:1,envoyeLe:new Date().toISOString(),appareil:(navigator.userAgent||'').slice(0,120),db:d};
+}
+async function clCompresser(txt){
+  if(typeof CompressionStream==='undefined')return {corps:txt,type:'application/json',ext:'json'};
+  const flux=new Blob([txt]).stream().pipeThrough(new CompressionStream('gzip'));
+  return {corps:await new Response(flux).blob(),type:'application/gzip',ext:'json.gz'};
+}
+async function clDecompresser(blob,nom){
+  if(/\.gz$/.test(nom)){
+    if(typeof DecompressionStream==='undefined')throw new Error('Ce navigateur ne peut pas lire cette sauvegarde');
+    return await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  }
+  return await blob.text();
+}
+function clChemin(s,nom,app){return encodeURIComponent(s.user.id)+'/'+encodeURIComponent(app||clAppareil())+'/'+nom;}
+async function clDeposer(s,nom,c){
+  const cf=clCfg();
+  const r=await clFetch('/storage/v1/object/'+cf.bucket+'/'+clChemin(s,nom),{method:'POST',headers:{Authorization:'Bearer '+s.access_token,'Content-Type':c.type,'x-upsert':'true','cache-control':'no-cache'},body:c.corps});
+  if(!r.ok){const j=await clJson(r);throw new Error(clMsgErreur(j,'Envoi refusé ('+r.status+')'));}
+}
+// Résumé léger de chaque boutique de l'appareil (lu par le gérant)
+function clResume(){
+  const cur=DB.curB,j=tod(),out=[];
+  try{
+    (DB.boutiques||[]).forEach(function(b){
+      DB.curB=b.id;
+      const st=(DB.stocks||[]).filter(function(x){return x.boutique===b.id;});
+      const vj=(DB.ventes||[]).filter(function(v){return v.boutique===b.id&&v.date===j&&v.type!=='recouvrement'&&v.statut!=='annule'&&!v.reporte;});
+      const bil=(DB.caisse||[]).filter(function(c){return c.boutique===b.id&&c.type==='normal';}).sort(function(x,y){return String(y.date).localeCompare(String(x.date));})[0];
+      let creances=0;try{creances=totalCreancesClients();}catch(e){}
+      out.push({id:b.id,nom:b.name||'Boutique',devise:b.devise||'$',ventesJour:Math.round(vj.reduce(function(a,v){return a+(Number(v.total)||0);},0)*100)/100,
+        nbVentesJour:vj.length,encaisseJour:Math.round(vj.reduce(function(a,v){return a+(Number(v.avance)||0);},0)*100)/100,
+        valeurStock:Math.round(valeurStockTotal(st)*100)/100,nbProduits:st.length,stockBas:st.filter(function(x){return x.typeVente!=='service'&&x.qte<=x.seuil;}).length,
+        creances:Math.round(creances*100)/100,dernierBilan:bil?bil.date:''});
+    });
+  }finally{DB.curB=cur;}
+  return {appareil:clAppareil(),nomAppareil:clNomAppareil(),majLe:new Date().toISOString(),jour:j,boutiques:out};
+}
+
+// ===== 🔒 CHIFFREMENT DE BOUT EN BOUT =====
+// Les données sont chiffrées SUR LE TÉLÉPHONE (AES-256-GCM) avant l'envoi : le serveur (et donc DAGAS EMPIRE) ne reçoit que
+// des fichiers illisibles. Une clé maître aléatoire est rangée dans le cloud sous deux enveloppes fermées : l'une par le mot de
+// passe du client (PBKDF2, 200 000 tours), l'autre par sa clé de secours (à noter sur papier). Sans l'un des deux, personne ne
+// peut relire les copies en ligne. La clé maître reste sur l'appareil pour les envois automatiques.
+const CL_CLE='dcm_cloud_cle',CL_RK_ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function clB64(buf){let t='';const b=new Uint8Array(buf);for(let i=0;i<b.length;i++)t+=String.fromCharCode(b[i]);return btoa(t);}
+function clDeB64(t){const x=atob(t);const b=new Uint8Array(x.length);for(let i=0;i<x.length;i++)b[i]=x.charCodeAt(i);return b;}
+function clAlea(n){const b=new Uint8Array(n);crypto.getRandomValues(b);return b;}
+async function clDeriver(secret,sel){const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt:sel,iterations:200000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
+async function clEnvelopper(k,donnees){const iv=clAlea(12);const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},k,donnees);return {iv:clB64(iv),ct:clB64(ct)};}
+async function clDeballer(k,o){return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:clDeB64(o.iv)},k,clDeB64(o.ct)));}
+function clNormRK(t){return String(t||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function clGenRK(){const b=clAlea(20);let t='';for(let i=0;i<20;i++)t+=CL_RK_ALPHA[b[i]%32];return t.match(/.{4}/g).join('-');}
+let clMK=null;
+async function clMKImporter(raw){return crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt']);}
+async function clMKCharger(){if(clMK)return clMK;let t=null;try{t=localStorage.getItem(CL_CLE);}catch(e){}if(!t)return null;clMK=await clMKImporter(clDeB64(t));return clMK;}
+function clMKPresente(){try{return !!localStorage.getItem(CL_CLE);}catch(e){return false;}}
+function clMKGarder(raw){try{localStorage.setItem(CL_CLE,clB64(raw));}catch(e){}}
+function clMKOublier(){clMK=null;try{localStorage.removeItem(CL_CLE);}catch(e){}}
+function clCheminCles(s){return encodeURIComponent(s.user.id)+'/cles.json';}
+async function clClesLire(s){
+  const cf=clCfg();
+  const r=await clFetch('/storage/v1/object/authenticated/'+cf.bucket+'/'+clCheminCles(s),{headers:{Authorization:'Bearer '+s.access_token,'cache-control':'no-cache'}});
+  if(!r.ok){const j=await clJson(r);if(r.status===404||/not.?found/i.test(JSON.stringify(j||{})))return null;throw new Error(clMsgErreur(j,'Lecture des clés impossible'));}
+  return await clJson(r);
+}
+async function clClesEcrire(s,o){
+  const cf=clCfg();
+  const r=await clFetch('/storage/v1/object/'+cf.bucket+'/'+clCheminCles(s),{method:'POST',headers:{Authorization:'Bearer '+s.access_token,'Content-Type':'application/json','x-upsert':'true','cache-control':'no-cache'},body:JSON.stringify(o)});
+  if(!r.ok){const j=await clJson(r);throw new Error(clMsgErreur(j,'Enregistrement des clés impossible'));}
+}
+async function clClesCreer(s,mdp){
+  const raw=clAlea(32),rk=clGenRK(),s1=clAlea(16),s2=clAlea(16);
+  const k1=await clDeriver(mdp,s1),k2=await clDeriver(clNormRK(rk),s2),mk=await clMKImporter(raw);
+  const o={v:1,cree:new Date().toISOString(),mdp:Object.assign({sel:clB64(s1)},await clEnvelopper(k1,raw)),secours:Object.assign({sel:clB64(s2)},await clEnvelopper(k2,raw)),rk:await clEnvelopper(mk,new TextEncoder().encode(rk))};
+  await clClesEcrire(s,o);clMKGarder(raw);clMK=mk;
+  return rk;
+}
+async function clClesOuvrir(o,secret,secours){try{const e=secours?o.secours:o.mdp;const k=await clDeriver(secours?clNormRK(secret):secret,clDeB64(e.sel));return await clDeballer(k,e);}catch(err){return null;}}
+// Après chaque connexion (avec le mot de passe en main) : ouvrir ou créer le coffre
+async function clClesApresConnexion(mdp){
+  const s=await clJeton();let o=await clClesLire(s);
+  if(!o){const rk=await clClesCreer(s,mdp);await clMontrerSecours(rk,true);return true;}
+  let raw=await clClesOuvrir(o,mdp,false);
+  if(!raw){
+    // Le mot de passe a changé (ou a été réinitialisé) : la clé de secours rouvre le coffre, puis il est refermé avec le nouveau mot de passe
+    for(;;){
+      const rk=await clDemanderSecours();if(!rk)return false;
+      raw=await clClesOuvrir(o,rk,true);
+      if(raw)break;
+      toast('❌ Clé de secours incorrecte','❌');
+    }
+    const sel=clAlea(16),k=await clDeriver(mdp,sel);
+    o.mdp=Object.assign({sel:clB64(sel)},await clEnvelopper(k,raw));
+    await clClesEcrire(s,o);
+    toast('🔓 Sauvegardes déverrouillées avec votre clé de secours');
+  }
+  clMKGarder(raw);clMK=await clMKImporter(raw);
+  return true;
+}
+function clFenetre(id,html){
+  let ov=document.getElementById(id);
+  if(!ov){ov=document.createElement('div');ov.id=id;document.body.appendChild(ov);}
+  ov.style.cssText='position:fixed;inset:0;z-index:20010;background:rgba(15,23,42,.75);display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto';
+  ov.innerHTML='<div style="background:#fff;color:#111;border-radius:16px;padding:22px 18px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4)">'+html+'</div>';
+  return ov;
+}
+function clMontrerSecours(rk,premiere){
+  return new Promise(function(fin){
+    const ov=clFenetre('cl-secours','<div style="text-align:center;font-size:34px">🔑</div><div style="text-align:center;font-size:17px;font-weight:800;margin:4px 0 6px">'+(premiere?'Votre clé de secours':'Clé de secours')+'</div>'
+      +'<div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:10px">Vos sauvegardes en ligne sont <b>chiffrées</b> : personne d\'autre que vous ne peut les lire, même pas DAGAS EMPIRE.<br>Si vous oubliez votre mot de passe, <b>seule cette clé</b> permet de les récupérer. <b>Écrivez-la sur papier</b> et gardez-la en lieu sûr.</div>'
+      +'<div id="cl-rk-val" style="font-family:monospace;font-size:16px;font-weight:800;letter-spacing:.5px;text-align:center;background:#F3F4F6;border:2px dashed #2563EB;border-radius:10px;padding:12px;word-break:break-all;user-select:all">'+rk+'</div>'
+      +'<button type="button" id="cl-rk-copier" style="width:100%;background:#F3F4F6;color:#374151;border:none;border-radius:9px;padding:10px;font-size:13px;font-weight:600;margin-top:8px">📋 Copier</button>'
+      +(premiere?'<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:10px"><input type="checkbox" id="cl-rk-ok" style="width:18px;height:18px;margin-top:2px"> J\'ai écrit ma clé de secours sur papier</label>':'')
+      +'<button type="button" id="cl-rk-fin" '+(premiere?'disabled':'')+' style="width:100%;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700;margin-top:10px;opacity:'+(premiere?'.5':'1')+'">'+(premiere?'Continuer':'Fermer')+'</button>');
+    ov.querySelector('#cl-rk-copier').onclick=function(){try{navigator.clipboard.writeText(rk).then(function(){toast('📋 Clé copiée');});}catch(e){}};
+    const ok=ov.querySelector('#cl-rk-ok'),b=ov.querySelector('#cl-rk-fin');
+    if(ok)ok.onchange=function(){b.disabled=!ok.checked;b.style.opacity=ok.checked?'1':'.5';};
+    b.onclick=function(){if(b.disabled)return;ov.remove();fin(true);};
+  });
+}
+function clDemanderSecours(){
+  return new Promise(function(fin){
+    const ov=clFenetre('cl-dem-secours','<div style="text-align:center;font-size:34px">🔐</div><div style="text-align:center;font-size:17px;font-weight:800;margin:4px 0 6px">Clé de secours</div>'
+      +'<div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:10px">Votre mot de passe a changé. Pour rouvrir vos sauvegardes chiffrées, entrez la <b>clé de secours</b> notée à la création du compte.</div>'
+      +'<input type="text" id="cl-ds-val" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" style="width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:8px;padding:11px 12px;font-size:15px;letter-spacing:1px">'
+      +'<button type="button" id="cl-ds-ok" style="width:100%;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700;margin-top:10px">🔓 Déverrouiller</button>'
+      +'<button type="button" id="cl-ds-non" style="width:100%;background:#F3F4F6;color:#374151;border:none;border-radius:9px;padding:10px;font-size:13px;font-weight:600;margin-top:8px">Annuler</button>');
+    ov.querySelector('#cl-ds-ok').onclick=function(){const v=ov.querySelector('#cl-ds-val').value;if(clNormRK(v).length<20){toast('Clé incomplète','❌');return;}ov.remove();fin(v);};
+    ov.querySelector('#cl-ds-non').onclick=function(){ov.remove();fin(null);};
+  });
+}
+async function clChiffrer(txt){
+  const mk=await clMKCharger();if(!mk)throw new Error('Sauvegardes verrouillées : entrez votre mot de passe dans « Sauvegarde en ligne »');
+  let data=new TextEncoder().encode(txt),fl=0;
+  if(typeof CompressionStream!=='undefined'){data=new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());fl=1;}
+  const iv=clAlea(12),ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},mk,data));
+  const out=new Uint8Array(17+ct.length);out.set([68,67,69,49,fl],0);out.set(iv,5);out.set(ct,17);
+  return {corps:new Blob([out]),type:'application/octet-stream',ext:'enc'};
+}
+async function clDechiffrer(blob){
+  const mk=await clMKCharger();if(!mk)throw new Error('Sauvegardes verrouillées : entrez votre mot de passe dans « Sauvegarde en ligne »');
+  const b=new Uint8Array(await blob.arrayBuffer());
+  if(b.length<18||b[0]!==68||b[1]!==67||b[2]!==69||b[3]!==49)throw new Error('Copie illisible');
+  let data;try{data=await crypto.subtle.decrypt({name:'AES-GCM',iv:b.slice(5,17)},mk,b.slice(17));}catch(e){throw new Error('Cette copie a été chiffrée avec une autre clé');}
+  if(b[4]&1)return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  return new TextDecoder().decode(data);
+}
+async function clSupprimer(s,chemins){
+  if(!chemins.length)return;
+  const cf=clCfg();
+  const r=await clFetch('/storage/v1/object/'+cf.bucket,{method:'DELETE',headers:{Authorization:'Bearer '+s.access_token,'Content-Type':'application/json'},body:JSON.stringify({prefixes:chemins})});
+  if(!r.ok){const j=await clJson(r);throw new Error(clMsgErreur(j,'Suppression refusée'));}
+}
+// Après le premier envoi chiffré : effacer du serveur les anciennes copies non chiffrées de cet appareil
+async function clEffacerAnciennes(s){
+  try{
+    const pre=s.user.id+'/'+clAppareil()+'/';
+    const L=(await clListerDossier(s,pre)).filter(function(f){return f&&f.name&&/\.json(\.gz)?$/.test(f.name);}).map(function(f){return pre+f.name;});
+    await clSupprimer(s,L);clMajEtat({anciennesEffacees:true});
+  }catch(e){}
+}
+let clEnvoiEnCours=null;
+async function clSauvegarder(manuel){
+  if(!clActif())throw new Error('Le cloud n\'est pas encore activé');
+  if(clEnvoiEnCours)return clEnvoiEnCours;
+  clEnvoiEnCours=(async function(){
+    const s=await clJeton();
+    const txt=JSON.stringify(clDonnees());
+    const c=await clChiffrer(txt);
+    await clDeposer(s,'latest.'+c.ext,c);
+    await clDeposer(s,'resume.enc',await clChiffrer(JSON.stringify(clResume())));
+    const jour=tod();const e=clEtat();
+    if(e.dernierJour!==jour||manuel)await clDeposer(s,'jour-'+jour+'.'+c.ext,c);
+    clMajEtat({dernierEnvoi:Date.now(),dernierJour:jour,modifie:false,erreur:'',taille:(c.corps.size||c.corps.length||0),compte:s.user.email});
+    if(!clEtat().anciennesEffacees)await clEffacerAnciennes(s);
+    return true;
+  })();
+  try{return await clEnvoiEnCours;}
+  catch(err){clMajEtat({erreur:String(err.message||err)});throw err;}
+  finally{clEnvoiEnCours=null;try{clAfficher();}catch(e){}}
+}
+async function clListerDossier(s,prefixe){
+  const cf=clCfg();
+  const r=await clFetch('/storage/v1/object/list/'+cf.bucket,{method:'POST',headers:{Authorization:'Bearer '+s.access_token,'Content-Type':'application/json'},body:JSON.stringify({prefix:prefixe,limit:200,offset:0,sortBy:{column:'name',order:'desc'}})});
+  const j=await clJson(r);
+  if(!r.ok)throw new Error(clMsgErreur(j,'Lecture du cloud impossible'));
+  return j||[];
+}
+// Toutes les copies du compte, tous appareils confondus : [{app, name, updated_at}]
+async function clListe(){
+  const s=await clJeton();
+  const dossiers=(await clListerDossier(s,s.user.id+'/')).filter(function(f){return f&&f.name&&!/\./.test(f.name);});
+  const tout=[];
+  for(const d of dossiers){
+    const fic=await clListerDossier(s,s.user.id+'/'+d.name+'/');
+    fic.filter(function(f){return f&&f.name&&/^(latest|jour-\d{4}-\d{2}-\d{2})\.(json(\.gz)?|enc)$/.test(f.name);}).forEach(function(f){tout.push({app:d.name,name:f.name,updated_at:f.updated_at||f.created_at||''});});
+  }
+  return tout.sort(function(a,b){const la=/^latest/.test(a.name),lb=/^latest/.test(b.name);if(la!==lb)return la?-1:1;return String(b.updated_at||b.name).localeCompare(String(a.updated_at||a.name));});
+}
+async function clResumes(){
+  const s=await clJeton(),cf=clCfg();
+  const dossiers=(await clListerDossier(s,s.user.id+'/')).filter(function(f){return f&&f.name&&!/\./.test(f.name);});
+  const out=[];
+  for(const d of dossiers){
+    try{
+      const r=await clFetch('/storage/v1/object/authenticated/'+cf.bucket+'/'+clChemin(s,'resume.enc',d.name),{headers:{Authorization:'Bearer '+s.access_token,'cache-control':'no-cache'}});
+      if(r.ok){const o=JSON.parse(await clDechiffrer(await r.blob()));if(o)out.push(o);}
+      else{const r2=await clFetch('/storage/v1/object/authenticated/'+cf.bucket+'/'+clChemin(s,'resume.json',d.name),{headers:{Authorization:'Bearer '+s.access_token,'cache-control':'no-cache'}});if(r2.ok){const o=await clJson(r2);if(o)out.push(o);}}
+    }catch(e){}
+  }
+  return out;
+}
+async function clTelecharger(nom,app){
+  const s=await clJeton(),cf=clCfg();
+  const r=await clFetch('/storage/v1/object/authenticated/'+cf.bucket+'/'+clChemin(s,nom,app),{headers:{Authorization:'Bearer '+s.access_token}});
+  if(!r.ok)throw new Error('Copie introuvable dans le cloud');
+  const txt=/\.enc$/.test(nom)?await clDechiffrer(await r.blob()):await clDecompresser(await r.blob(),nom);
+  const o=JSON.parse(txt),db=o&&o.db?o.db:o;
+  if(!db||!Array.isArray(db.boutiques))throw new Error('Copie illisible');
+  return {db:db,envoyeLe:o.envoyeLe||''};
+}
+function clDBVide(){return !(DB.ventes||[]).length&&!(DB.stocks||[]).length&&!(DB.caisse||[]).length&&!(DB.bons||[]).length;}
+async function clRestaurer(nom,app){
+  const res=await clTelecharger(nom,app);
+  const nbV=(res.db.ventes||[]).length,nbS=(res.db.stocks||[]).length;
+  if(!confirm('☁️ Récupérer la copie du cloud'+(res.envoyeLe?' du '+new Date(res.envoyeLe).toLocaleString(LOCALE()):'')+' ?\n\n- '+(res.db.boutiques||[]).length+' boutique(s)\n- '+nbS+' produit(s)\n- '+nbV+' vente(s)\n\nElle REMPLACE les données de ce téléphone (une copie de sécurité est gardée dans « Copies automatiques récentes »).'))return false;
+  await snapshotInterne();
+  DB=res.db;save();
+  clMajEtat({lie:true,modifie:false,dernierEnvoi:Date.now()});
+  toast('✅ Données récupérées du cloud ! Rechargement…');
+  setTimeout(function(){location.reload();},1200);
+  return true;
+}
+// Après connexion : protéger les données (téléphone vide ↔ cloud plein)
+async function clApresConnexion(){
+  let liste=[];
+  try{liste=await clListe();}catch(e){toast('⚠️ '+e.message,'⚠️');}
+  const derniere=liste.find(function(f){return /^latest/.test(f.name);});
+  const mienne=liste.find(function(f){return f.app===clAppareil();});
+  if(!derniere||mienne){clMajEtat({lie:true,modifie:true});clPlanifier(1000);toast('☁️ Connecté. Sauvegarde en cours…');return;}
+  clMajEtat({lie:false});
+  clAfficher();
+  if(clDBVide()){try{const ok=await clRestaurer(derniere.name,derniere.app);if(!ok){clMajEtat({lie:true,modifie:true});clPlanifier(2000);}}catch(e){toast('❌ '+e.message,'❌');}}
+  else toast('☁️ Ce compte a déjà des données dans le cloud : choisissez ci-dessous.');
+}
+// Envoi automatique : 1 min après la dernière modification (au plus toutes les 5 min), au retour d'internet et quand l'appli passe en arrière-plan
+let clMinuteur=null;
+function clPlanifier(delai){
+  if(!clActif()||!clSession()||!clEtat().lie||clEtat().auto===false)return;
+  clearTimeout(clMinuteur);
+  const e=clEtat(),attente=Math.max(delai==null?60000:delai,(e.dernierEnvoi||0)+300000-Date.now());
+  clMinuteur=setTimeout(function(){clTenterEnvoi();},Math.max(0,attente));
+}
+function clTenterEnvoi(){
+  if(!clMKPresente())return;
+  if(!clActif()||!clSession()||!clEtat().lie||clEtat().auto===false||!clEtat().modifie||!clEnLigne())return;
+  clSauvegarder(false).catch(function(){});
+}
+(function(){
+  const _s=save;save=function(){const r=_s.apply(this,arguments);try{if(clSession()&&clEtat().lie){clMajEtat({modifie:true});clPlanifier();}}catch(e){}return r;};
+  window.addEventListener('online',function(){setTimeout(clTenterEnvoi,3000);});
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')clTenterEnvoi();});
+  setTimeout(function(){try{if(clEtat().modifie)clPlanifier(5000);clAfficher();}catch(e){}},4000);
+})();
+// ----- Interface (Profil) -----
+function clIlYa(ts){if(!ts)return 'jamais';const m=Math.round((Date.now()-ts)/60000);if(m<1)return 'à l\'instant';if(m<60)return 'il y a '+m+' min';const h=Math.round(m/60);if(h<48)return 'il y a '+h+' h';return 'le '+new Date(ts).toLocaleDateString(LOCALE());}
+function clAfficher(){
+  const box=document.getElementById('cloud-zone');if(!box)return;
+  if(!clActif()){box.innerHTML='<div style="font-size:13px;color:var(--mu)">☁️ La sauvegarde en ligne n\'est pas encore activée sur ce logiciel. Contactez le support Daga\'s Manager.</div>';return;}
+  const s=clSession(),e=clEtat();
+  if(!s){
+    box.innerHTML='<div style="font-size:12px;color:var(--mu);margin-bottom:9px">Connectez-vous pour que vos données soient copiées automatiquement en ligne. Si le téléphone est perdu, vous les récupérez sur un autre appareil.</div>'
+      +'<div class="fg"><label>E-mail</label><input type="email" id="cl-email" autocomplete="username" placeholder="votre@email.com"></div>'
+      +'<div class="fg"><label>Mot de passe du cloud</label><input type="password" id="cl-mdp" autocomplete="current-password" placeholder="6 caractères minimum"></div>'
+      +'<div style="display:flex;gap:8px"><button class="btn bp" style="flex:1;justify-content:center" onclick="clActionConnexion(false)">🔑 Se connecter</button><button class="btn bo" style="flex:1;justify-content:center" onclick="clActionConnexion(true)">➕ Créer un compte</button></div>';
+    return;
+  }
+  let h='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px"><div style="font-size:13px">👤 <b>'+_de(s.user.email||'')+'</b></div><span class="tag '+(e.lie?'tag-in':'tag-low')+'">'+(e.lie?'Connecté':'À choisir')+'</span></div>';
+  if(!e.lie){
+    h+='<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:10px;margin-bottom:9px;font-size:13px">⚠️ Ce compte a déjà des données dans le cloud (autre appareil). Choisissez :<div style="display:flex;flex-direction:column;gap:7px;margin-top:8px">'
+      +'<button class="btn bo" style="justify-content:center" onclick="clActionGarder()">📱 Ce téléphone est une autre boutique / un autre appareil : garder ses données et les envoyer</button>'
+      +'<button class="btn bp" style="justify-content:center" onclick="clActionCopies()">📥 Remplacer par une copie du cloud (nouveau téléphone)</button></div></div>';
+  } else {
+    h+='<div class="tbl-wrap"><table style="min-width:0"><tbody>'
+      +'<tr><td>Dernière sauvegarde en ligne</td><td style="text-align:right;font-weight:700">'+clIlYa(e.dernierEnvoi)+'</td></tr>'
+      +'<tr><td>Modifications à envoyer</td><td style="text-align:right;font-weight:700;color:'+(e.modifie?'var(--o)':'var(--g)')+'">'+(e.modifie?'Oui':'Non')+'</td></tr>'
+      +(e.taille?'<tr><td>Taille de la copie</td><td style="text-align:right">'+(e.taille>1048576?(e.taille/1048576).toFixed(1)+' Mo':Math.max(1,Math.round(e.taille/1024))+' Ko')+'</td></tr>':'')
+      +'</tbody></table></div>'
+      +(e.erreur?'<div style="font-size:12px;color:var(--r);margin:-4px 0 8px">⚠️ '+_de(e.erreur)+'</div>':'')
+      +'<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:9px"><input type="checkbox" '+(e.auto===false?'':'checked')+' onchange="clMajEtat({auto:this.checked});if(this.checked)clPlanifier(2000);" style="width:18px;height:18px"> Sauvegarde automatique (dès qu\'il y a internet)</label>'
+      +'<div class="fg" style="margin-bottom:8px"><label>Nom de cet appareil</label><input type="text" value="'+_de(clNomAppareil())+'" onchange="clMajEtat({nomAppareil:this.value.trim(),modifie:true});clPlanifier(2000);"></div>'
+      +'<div style="display:flex;flex-direction:column;gap:7px"><button class="btn" style="justify-content:center;background:#0EA5E9;color:#fff" onclick="clActionReseau()">🌍 Mes boutiques en ligne</button><button class="btn bp" style="justify-content:center" onclick="clActionSauver()">☁️ Sauvegarder maintenant</button>'
+      +'<button class="btn bo" style="justify-content:center" onclick="clActionCopies()">📥 Restaurer depuis le cloud</button></div>';
+  }
+  h+='<button class="btn bo bsm" style="margin-top:9px" onclick="clActionDeconnexion()">🚪 Se déconnecter du cloud</button>';
+  box.innerHTML=h;
+}
+async function clActionConnexion(creer){
+  const em=((document.getElementById('cl-email')||{}).value||'').trim(),pw=(document.getElementById('cl-mdp')||{}).value||'';
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){toast('E-mail invalide','❌');return;}
+  if(pw.length<6){toast('Mot de passe : 6 caractères minimum','❌');return;}
+  if(!clEnLigne()){toast('Pas de connexion internet','❌');return;}
+  try{
+    toast(creer?'Création du compte…':'Connexion…');
+    const s=creer?await clInscription(em,pw):await clConnexion(em,pw);
+    const m=document.getElementById('cl-mdp');if(m)m.value='';
+    if(!s){toast('📧 Compte créé : ouvrez le lien reçu par e-mail, puis connectez-vous');return;}
+    if(!await clClesApresConnexion(pw)){clEcrire(CL_SESSION,null);clMKOublier();clAfficher();return;}
+    clMajEtat({compte:em,erreur:''});clAfficher();
+    await clApresConnexion();clAfficher();
+  }catch(err){toast('❌ '+err.message,'❌');}
+}
+async function clActionSauver(){
+  if(!clEnLigne()){toast('Pas de connexion internet : la sauvegarde partira dès le retour d\'internet','⚠️');clMajEtat({modifie:true});return;}
+  try{toast('☁️ Envoi en cours…');await clSauvegarder(true);toast('✅ Sauvegardé dans le cloud');}catch(err){toast('❌ '+err.message,'❌');}
+}
+async function clActionGarder(){
+  if(!confirm('Envoyer les données de CE téléphone dans le cloud ?\n\nElles sont rangées dans le dossier de cet appareil : les données des autres appareils ne sont pas touchées.'))return;
+  clMajEtat({lie:true,modifie:true});
+  try{await clSauvegarder(true);toast('✅ Données de ce téléphone envoyées');}catch(err){toast('❌ '+err.message,'❌');}
+  clAfficher();
+}
+async function clActionRestaurer(nom){
+  try{
+    let app=arguments[1];
+    if(!nom){const l=await clListe();const d=l.find(function(f){return /^latest/.test(f.name);})||l[0];if(!d){toast('Aucune copie dans le cloud','❌');return;}nom=d.name;app=d.app;}
+    await clRestaurer(nom,app);
+  }catch(err){toast('❌ '+err.message,'❌');}
+}
+async function clActionCopies(){
+  let l;try{l=await clListe();}catch(err){toast('❌ '+err.message,'❌');return;}
+  let ov=document.getElementById('m-cloud-copies');
+  if(!ov){ov=document.createElement('div');ov.className='ovl';ov.id='m-cloud-copies';document.body.appendChild(ov);}
+  let noms={};try{(await clResumes()).forEach(function(r){noms[r.appareil]=r.nomAppareil;});}catch(e){}
+  ov.innerHTML='<div class="modal" style="max-width:600px"><div class="mhandle"></div><div class="mhdr"><div class="mtitle">☁️ Copies dans le cloud</div><button class="mclose" onclick="closeM(\'m-cloud-copies\')">✕</button></div>'
+    +(l.length?'<div class="tbl-wrap"><table style="min-width:0"><thead><tr><th>Appareil</th><th>Copie</th><th></th></tr></thead><tbody>'+l.map(function(f){
+      const d=f.updated_at||'',lib=/^latest/.test(f.name)?'⭐ Dernière copie':'📅 Copie du '+fD(f.name.substr(5,10));
+      return '<tr><td style="font-weight:600">'+_de(noms[f.app]||f.app)+(f.app===clAppareil()?' <span class="tag tag-info">cet appareil</span>':'')+'</td><td>'+lib+(d?'<div style="font-size:11px;color:var(--mu)">'+new Date(d).toLocaleString(LOCALE())+'</div>':'')+'</td><td><button class="btn bp bsm" onclick="closeM(\'m-cloud-copies\');clActionRestaurer(\''+f.name+'\',\''+f.app+'\')">📥 Restaurer</button></td></tr>';}).join('')+'</tbody></table></div>'
+    :'<div class="empty"><div class="et">Aucune copie dans le cloud</div></div>')+'</div>';
+  openM('m-cloud-copies');
+}
+function clActionDeconnexion(){
+  const e=clEtat();
+  if(e.modifie&&!confirm('Des modifications n\'ont pas encore été envoyées au cloud. Se déconnecter quand même ?'))return;
+  clEcrire(CL_SESSION,null);clEcrire(CL_ETAT,{auto:e.auto});clMKOublier();clearTimeout(clMinuteur);clAfficher();toast('Déconnecté du cloud');
+}
+
+// 🌍 Mes boutiques en ligne : tableau de bord du gérant (toutes les boutiques / appareils du même compte)
+let clReseauMinuteur=null;
+async function clActionReseau(){
+  let ov=document.getElementById('m-cloud-reseau');
+  if(!ov){ov=document.createElement('div');ov.className='ovl';ov.id='m-cloud-reseau';ov.innerHTML='<div class="modal" style="max-width:820px"><div class="mhandle"></div><div class="mhdr"><div class="mtitle">🌍 Mes boutiques en ligne</div><button class="mclose" onclick="closeM(\'m-cloud-reseau\')">✕</button></div><div id="cl-reseau-corps"></div></div>';document.body.appendChild(ov);}
+  document.getElementById('cl-reseau-corps').innerHTML='<div class="empty"><div class="et">Chargement…</div></div>';
+  openM('m-cloud-reseau');
+  if(clEtat().lie&&clEtat().modifie&&clEnLigne()){try{await clSauvegarder(false);}catch(e){}}
+  await clReseauRendre();
+  clearInterval(clReseauMinuteur);
+  clReseauMinuteur=setInterval(function(){const o=document.getElementById('m-cloud-reseau');if(!o||!o.classList.contains('open')){clearInterval(clReseauMinuteur);return;}clReseauRendre();},60000);
+}
+async function clReseauRendre(){
+  const box=document.getElementById('cl-reseau-corps');if(!box)return;
+  let R;try{R=await clResumes();}catch(err){box.innerHTML='<div class="empty"><div class="et">❌ '+_de(err.message)+'</div></div>';return;}
+  const lignes=[];
+  R.forEach(function(a){(a.boutiques||[]).forEach(function(b){lignes.push({a:a,b:b});});});
+  lignes.sort(function(x,y){return String(y.a.majLe).localeCompare(String(x.a.majLe));});
+  const j=tod();
+  const tot={};lignes.forEach(function(l){if(l.a.jour!==j)return;const d=l.b.devise;tot[d]=tot[d]||{v:0,n:0,e:0};tot[d].v+=l.b.ventesJour;tot[d].n+=l.b.nbVentesJour;tot[d].e+=l.b.encaisseJour;});
+  let h='<div class="info-box" style="margin-bottom:9px;font-size:12px">Chaque appareil connecté avec ce compte envoie ses chiffres environ toutes les minutes quand il a internet. Mise à jour automatique de cet écran chaque minute.</div>';
+  h+='<div class="kgrid" style="margin-bottom:10px">'+Object.keys(tot).map(function(d){return '<div class="kcard"><div class="klbl">Ventes du jour (toutes boutiques)</div><div class="kval" style="color:var(--b)">'+fmt(tot[d].v)+' '+_de(d)+'</div><div class="ksub">'+tot[d].n+' vente(s) — encaissé '+fmt(tot[d].e)+' '+_de(d)+'</div></div>';}).join('')
+    +'<div class="kcard"><div class="klbl">Appareils connectés</div><div class="kval">'+R.length+'</div><div class="ksub">'+lignes.length+' boutique(s)</div></div></div>';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin:4px 0 7px"><span class="tag tag-info" style="font-size:13px">🏪 Boutiques</span><span style="font-size:12px;color:var(--mu)">'+lignes.length+' boutique(s)</span><button class="btn bo bsm" style="margin-left:auto" onclick="clReseauRendre()">🔄 Actualiser</button></div>';
+  h+=lignes.length?'<div class="tbl-wrap"><table><thead><tr><th>Boutique</th><th>Appareil</th><th style="text-align:right">Ventes du jour</th><th style="text-align:right">Nb</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Valeur stock</th><th>Stock bas</th><th style="text-align:right">Créances</th><th>Dernier bilan</th><th>Mise à jour</th></tr></thead><tbody>'+lignes.map(function(l){
+      const age=(Date.now()-new Date(l.a.majLe).getTime())/60000,vieux=l.a.jour!==j,dv=' '+_de(l.b.devise);
+      const etat=age<10?'tag-in':(age<120?'tag-low':'tag-out');
+      return '<tr><td style="font-weight:700">'+_de(l.b.nom)+'</td><td style="font-size:12px">'+_de(l.a.nomAppareil||'')+(l.a.appareil===clAppareil()?' <span class="tag tag-info">ici</span>':'')+'</td>'
+        +'<td style="text-align:right;font-weight:700;white-space:nowrap">'+(vieux?'—':fmt(l.b.ventesJour)+dv)+'</td><td style="text-align:right">'+(vieux?'—':l.b.nbVentesJour)+'</td><td style="text-align:right;white-space:nowrap">'+(vieux?'—':fmt(l.b.encaisseJour)+dv)+'</td>'
+        +'<td style="text-align:right;white-space:nowrap">'+fmt(l.b.valeurStock)+dv+'</td><td>'+(l.b.stockBas?'<span class="tag tag-out">'+l.b.stockBas+'</span>':'<span class="tag tag-in">0</span>')+'</td>'
+        +'<td style="text-align:right;white-space:nowrap">'+fmt(l.b.creances)+dv+'</td><td style="white-space:nowrap">'+(l.b.dernierBilan?fD(l.b.dernierBilan):'—')+'</td>'
+        +'<td><span class="tag '+etat+'">'+clIlYa(new Date(l.a.majLe).getTime())+'</span></td></tr>';}).join('')+'</tbody></table></div>'
+    :'<div class="tbl-wrap"><div class="empty" style="padding:14px"><div class="et">Aucun appareil n\'a encore envoyé ses données</div></div></div>';
+  box.innerHTML=h;
+}
+
+// ===== 👑 CONTRÔLE À DISTANCE DES COMPTES ET ABONNEMENTS (DAGAS EMPIRE) =====
+// Table Supabase « comptes » : actif (suspendre / réactiver), fin (abonnement à distance ; vide = géré par les clés de licence).
+// - Connexion au cloud obligatoire dès que le cloud est activé (sauf mot de passe universel de l'administrateur).
+// - Le statut est vérifié au démarrage, toutes les 30 min et au retour d'internet ; sans internet, le dernier statut connu
+//   reste valable 30 jours, ensuite une connexion internet est demandée pour vérifier l'abonnement.
+// - Les clés de licence restent valables : l'accès est accordé si la clé OU l'abonnement à distance est valide.
+var DCM_ADMIN_EMAIL='dagasempire2021@gmail.com';
+const CL_COMPTE='dcm_cloud_compte',CL_HORS_LIGNE_MAX=30*86400000;
+function clCompte(){return clLire(CL_COMPTE);}
+function clEstAdmin(){const s=clSession();return !!(s&&s.user&&String(s.user.email||'').toLowerCase()===DCM_ADMIN_EMAIL);}
+function clAbonnementDistantOk(){const c=clCompte();return !!(c&&c.actif!==false&&c.fin&&Date.now()<=new Date(c.fin).getTime());}
+async function clPing(){
+  if(!clActif()||!clSession()||!clEnLigne())return null;
+  const s=await clJeton();
+  const r=await clFetch('/rest/v1/rpc/ping',{method:'POST',headers:{Authorization:'Bearer '+s.access_token,'Content-Type':'application/json'},body:'{}'});
+  const j=await clJson(r);
+  if(!r.ok)throw new Error(clMsgErreur(j,'Vérification du compte impossible'));
+  const row=Array.isArray(j)?j[0]:j;
+  if(!row)return null;
+  const c={actif:row.actif!==false,fin:row.fin||null,note:row.note||'',email:row.email||s.user.email,verifieLe:Date.now()};
+  clEcrire(CL_COMPTE,c);
+  return c;
+}
+// Raison de blocage : null si l'accès est autorisé
+function clBlocage(){
+  if(!clActif())return null;
+  try{if(lkMaster())return null;}catch(e){}
+  if(!clSession())return 'connexion';
+  const c=clCompte();
+  if(c&&c.actif===false)return 'suspendu';
+  if(!c||Date.now()-(c.verifieLe||0)>CL_HORS_LIGNE_MAX)return 'verif';
+  return null;
+}
+// L'abonnement à distance compte comme une licence valide
+(function(){const _ok=lkAccesOk;lkAccesOk=function(){return _ok.apply(this,arguments)||clAbonnementDistantOk();};})();
+function clPorte(){
+  const raison=clBlocage(),ex=document.getElementById('cl-gate');
+  if(!raison){if(ex)ex.remove();return false;}
+  const c=clCompte()||{};
+  let corps='';
+  if(raison==='connexion'){
+    corps='<div style="font-size:18px;font-weight:800;color:#1F2937;margin-top:4px">Connexion à votre compte</div>'
+      +'<div style="font-size:12px;color:#6B7280;margin:5px 0 12px;line-height:1.5">Connectez-vous avec votre e-mail. Vos données restent sur ce téléphone et sont sauvegardées en ligne automatiquement.</div>'
+      +'<input type="email" id="clg-email" placeholder="votre@email.com" autocomplete="username" style="width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:8px;padding:11px 12px;font-size:15px;margin-bottom:8px">'
+      +'<input type="password" id="clg-mdp" placeholder="Mot de passe (6 caractères minimum)" autocomplete="current-password" style="width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:8px;padding:11px 12px;font-size:15px">'
+      +'<div id="clg-err" style="display:none;color:#EF4444;font-size:12px;margin-top:8px;font-weight:600"></div>'
+      +'<button type="button" onclick="clPorteConnexion(false)" style="width:100%;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700;margin-top:12px">🔑 Se connecter</button>'
+      +'<button type="button" onclick="clPorteConnexion(true)" style="width:100%;background:#F3F4F6;color:#374151;border:none;border-radius:9px;padding:11px;font-size:13px;font-weight:600;margin-top:8px">➕ Créer mon compte</button>';
+  } else if(raison==='suspendu'){
+    corps='<div style="font-size:40px">⛔</div><div style="font-size:18px;font-weight:800;color:#B91C1C;margin-top:4px">Compte suspendu</div>'
+      +'<div style="font-size:13px;color:#374151;margin:8px 0 12px;line-height:1.6">Le compte <b>'+_de(c.email||'')+'</b> est suspendu.'+(c.note?'<br><i>'+_de(c.note)+'</i>':'')+'<br>Contactez DAGAS EMPIRE pour le réactiver. Vos données sont conservées.</div>'
+      +'<a href="https://wa.me/243845254323" target="_blank" rel="noopener" style="display:block;text-align:center;background:#16A34A;color:#fff;border-radius:9px;padding:12px;font-size:14px;font-weight:700;text-decoration:none">💬 Contacter le support (WhatsApp)</a>'
+      +'<button type="button" onclick="clPorteVerifier()" style="width:100%;background:#F3F4F6;color:#374151;border:none;border-radius:9px;padding:11px;font-size:13px;font-weight:600;margin-top:8px">🔄 Vérifier à nouveau</button>';
+  } else {
+    const j=c.verifieLe?Math.floor((Date.now()-c.verifieLe)/86400000):null;
+    corps='<div style="font-size:40px">📶</div><div style="font-size:18px;font-weight:800;color:#B45309;margin-top:4px">Vérification de l\'abonnement</div>'
+      +'<div style="font-size:13px;color:#374151;margin:8px 0 12px;line-height:1.6">'+(j==null?'Votre abonnement n\'a pas encore été vérifié.':'Dernière vérification il y a <b>'+j+' jours</b>.')+'<br>Connectez ce téléphone à internet puis appuyez sur « Vérifier ». Vos données sont conservées.</div>'
+      +'<div id="clg-err" style="display:none;color:#EF4444;font-size:12px;margin-bottom:8px;font-weight:600"></div>'
+      +'<button type="button" onclick="clPorteVerifier()" style="width:100%;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700">🔄 Vérifier maintenant</button>';
+  }
+  corps+='<div style="text-align:center;margin-top:12px"><a href="#" onclick="event.preventDefault();this.style.display=\'none\';document.getElementById(\'clg-adm\').style.display=\'block\'" style="font-size:11px;color:#9CA3AF">Administrateur</a></div>'
+    +'<div id="clg-adm" style="display:none;margin-top:6px"><input type="password" id="clg-pwd" placeholder="Mot de passe universel" style="width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:8px;padding:9px 11px;font-size:13px"><button type="button" onclick="clPorteAdmin()" style="width:100%;background:#F3F4F6;color:#374151;border:none;border-radius:8px;padding:9px;font-size:12px;font-weight:600;margin-top:6px">Entrer (administrateur)</button></div>';
+  const html='<div style="background:#fff;border-radius:16px;padding:24px 20px;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">'+corps+'</div>';
+  if(ex&&ex.dataset.raison===raison)return true;
+  const ov=ex||document.createElement('div');ov.id='cl-gate';ov.dataset.raison=raison;
+  ov.style.cssText='position:fixed;inset:0;z-index:20005;background:linear-gradient(135deg,#0B1B3A,#1E40AF);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto';
+  ov.innerHTML=html;if(!ex)document.body.appendChild(ov);
+  return true;
+}
+function clPorteErreur(m){const e=document.getElementById('clg-err');if(e){e.textContent=m;e.style.display='block';}else toast(m,'❌');}
+async function clPorteConnexion(creer){
+  const em=((document.getElementById('clg-email')||{}).value||'').trim(),pw=(document.getElementById('clg-mdp')||{}).value||'';
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){clPorteErreur('E-mail invalide');return;}
+  if(pw.length<6){clPorteErreur('Mot de passe : 6 caractères minimum');return;}
+  if(!clEnLigne()){clPorteErreur('Pas de connexion internet');return;}
+  try{
+    const s=creer?await clInscription(em,pw):await clConnexion(em,pw);
+    if(!s){clPorteErreur('Compte créé : ouvrez le lien reçu par e-mail, puis connectez-vous');return;}
+    const g=document.getElementById('cl-gate');if(g)g.style.display='none';
+    let okCles=false;try{okCles=await clClesApresConnexion(pw);}finally{if(g)g.style.display='flex';}
+    if(!okCles){clEcrire(CL_SESSION,null);clMKOublier();clPorteErreur('Connexion annulée : la clé de secours est nécessaire');return;}
+    clMajEtat({compte:em,erreur:''});
+    try{await clPing();}catch(e){}
+    clPorte();clVerifierLicence();clAfficher();
+    await clApresConnexion();clAfficher();
+  }catch(err){clPorteErreur(err.message);}
+}
+async function clPorteVerifier(){
+  if(!clEnLigne()){clPorteErreur('Pas de connexion internet');return;}
+  try{await clPing();clPorte();clVerifierLicence();clAfficher();if(!clBlocage())toast('✅ Compte vérifié');else if(clBlocage()==='suspendu')toast('⛔ Le compte est toujours suspendu','⛔');}
+  catch(err){clPorteErreur(err.message);}
+}
+function clPorteAdmin(){
+  const v=(document.getElementById('clg-pwd')||{}).value||'';
+  if(licEstMaster(v)){try{sessionStorage.setItem(LK_MASTER,'1');}catch(e){}clPorte();toast('Accès administrateur');}
+  else{try{licEchec();}catch(e){}clPorteErreur('❌ Mot de passe incorrect');}
+}
+// Après un changement d'abonnement à distance : retirer l'écran de licence si l'accès est désormais valide
+function clVerifierLicence(){
+  try{LK=lkLoad();if(lkAccesOk()){const g=document.getElementById('lk-gate');if(g){g.remove();lkLancerSuite();}}else if(!document.getElementById('lk-gate'))lkAfficherPorte(null,false);}catch(e){}
+}
+let clDernierPing=0;
+function clSurveiller(force){
+  try{
+    clPorte();
+    if(clActif()&&clSession()&&clEnLigne()&&(force||Date.now()-clDernierPing>30*60000)){
+      clDernierPing=Date.now();
+      clPing().then(function(){clPorte();clVerifierLicence();try{clAfficher();}catch(e){}}).catch(function(){});
+    }
+  }catch(e){}
+}
+setTimeout(function(){try{if(clAbonnementDistantOk())clVerifierLicence();}catch(e){}clSurveiller(true);},1500);
+setInterval(function(){clSurveiller(false);},60000);
+window.addEventListener('online',function(){setTimeout(function(){clSurveiller(true);},2000);});
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'&&Date.now()-clDernierPing>10*60000)clSurveiller(true);});
+// Déconnexion : l'écran de connexion obligatoire revient
+(function(){const _d=clActionDeconnexion;clActionDeconnexion=function(){const r=_d.apply(this,arguments);try{if(!clSession()){clEcrire(CL_COMPTE,null);clPorte();}}catch(e){}return r;};})();
+// Abonnement affiché au client + accès administrateur dans la carte cloud
+(function(){const _a=clAfficher;clAfficher=function(){
+  _a.apply(this,arguments);
+  const box=document.getElementById('cloud-zone');if(!box||!clSession())return;
+  const c=clCompte();
+  let h='<div class="tbl-wrap" style="margin-top:9px"><table style="min-width:0"><tbody>'
+    +'<tr><td>Compte</td><td style="text-align:right">'+(c?(c.actif===false?'<span class="tag tag-out">Suspendu</span>':'<span class="tag tag-in">Actif</span>'):'—')+'</td></tr>'
+    +'<tr><td>Abonnement</td><td style="text-align:right;font-weight:700">'+(c&&c.fin?(new Date(c.fin).getTime()>=Date.now()?'jusqu\'au '+licFmtDate(new Date(c.fin).getTime()):'<span style="color:var(--r)">expiré le '+licFmtDate(new Date(c.fin).getTime())+'</span>'):'Clé de licence')+'</td></tr>'
+    +'<tr><td>Dernière vérification</td><td style="text-align:right">'+(c?clIlYa(c.verifieLe):'jamais')+'</td></tr></tbody></table></div>';
+  if(clEstAdmin())h+='<button class="btn" style="width:100%;justify-content:center;margin-top:8px;background:#7C3AED;color:#fff" onclick="clAdminOuvrir()">👑 Gérer les comptes clients</button>';
+  box.insertAdjacentHTML('beforeend',h);
+};})();
+// ----- 👑 Écran administrateur : liste des clients, suspendre / réactiver, abonnement à distance -----
+async function clAdminListe(){
+  const s=await clJeton();
+  const r=await clFetch('/rest/v1/comptes?select=*&order=cree_le.desc',{headers:{Authorization:'Bearer '+s.access_token}});
+  const j=await clJson(r);
+  if(!r.ok)throw new Error(clMsgErreur(j,'Liste des comptes impossible'));
+  return j||[];
+}
+async function clAdminModifier(uid,champs){
+  const s=await clJeton();
+  const r=await clFetch('/rest/v1/comptes?user_id=eq.'+encodeURIComponent(uid),{method:'PATCH',headers:{Authorization:'Bearer '+s.access_token,'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(champs)});
+  const j=await clJson(r);
+  if(!r.ok||!Array.isArray(j)||!j.length)throw new Error(clMsgErreur(j,'Modification refusée (êtes-vous administrateur ?)'));
+  return j[0];
+}
+let clAdminFiltre='';
+async function clAdminOuvrir(){
+  let ov=document.getElementById('m-cloud-admin');
+  if(!ov){ov=document.createElement('div');ov.className='ovl';ov.id='m-cloud-admin';ov.innerHTML='<div class="modal" style="max-width:860px"><div class="mhandle"></div><div class="mhdr"><div class="mtitle">👑 Comptes clients</div><button class="mclose" onclick="closeM(\'m-cloud-admin\')">✕</button></div><input type="search" class="sbox" placeholder="🔍 Rechercher un e-mail…" oninput="clAdminFiltre=this.value;clAdminRendre()"><div id="cl-admin-corps"></div></div>';document.body.appendChild(ov);}
+  openM('m-cloud-admin');await clAdminRendre(true);
+}
+let clAdminCache=[];
+async function clAdminRendre(recharger){
+  const box=document.getElementById('cl-admin-corps');if(!box)return;
+  if(recharger){box.innerHTML='<div class="empty"><div class="et">Chargement…</div></div>';try{clAdminCache=await clAdminListe();}catch(err){box.innerHTML='<div class="empty"><div class="et">❌ '+_de(err.message)+'</div></div>';return;}}
+  const q=String(clAdminFiltre||'').toLowerCase();
+  const L=clAdminCache.filter(function(c){return !q||String(c.email||'').toLowerCase().indexOf(q)>=0;});
+  const now=Date.now(),nbS=clAdminCache.filter(function(c){return c.actif===false;}).length,nbA=clAdminCache.filter(function(c){return c.fin&&new Date(c.fin).getTime()>=now;}).length;
+  let h='<div class="kgrid" style="margin-bottom:10px"><div class="kcard"><div class="klbl">Comptes</div><div class="kval">'+clAdminCache.length+'</div></div><div class="kcard"><div class="klbl">Suspendus</div><div class="kval" style="color:var(--r)">'+nbS+'</div></div><div class="kcard"><div class="klbl">Abonnements à distance actifs</div><div class="kval" style="color:var(--g)">'+nbA+'</div></div></div>';
+  h+=L.length?'<div class="tbl-wrap"><table><thead><tr><th>Client (e-mail)</th><th>Actions</th><th>Compte</th><th>Abonnement</th><th>Vu</th></tr></thead><tbody>'+L.map(function(c){
+    const fin=c.fin?new Date(c.fin).getTime():null,ab=fin==null?'<span class="tag tag-info">Clé de licence</span>':(fin>=now?'<span class="tag tag-in">jusqu\'au '+licFmtDate(fin)+'</span>':'<span class="tag tag-out">expiré le '+licFmtDate(fin)+'</span>');
+    const moi=String(c.email||'').toLowerCase()===DCM_ADMIN_EMAIL;
+    return '<tr><td style="font-weight:600">'+_de(c.email||c.user_id)+(c.note?'<div style="font-size:11px;color:var(--mu)">'+_de(c.note)+'</div>':'')+'</td>'
+      +'<td style="white-space:nowrap">'+(moi?'<span style="font-size:12px;color:var(--mu)">Vous</span>':(c.actif===false?'<button class="btn bg bsm" onclick="clAdminActif(\''+c.user_id+'\',true)">✅ Réactiver</button>':'<button class="btn bsm" style="background:var(--r);color:#fff" onclick="clAdminActif(\''+c.user_id+'\',false)">⛔ Suspendre</button>'))
+      +' <select class="bsm" style="border:1.5px solid var(--br);border-radius:8px;padding:6px;background:var(--card);color:var(--tx)" onchange="clAdminAbonnement(\''+c.user_id+'\',this.value);this.value=\'\'"><option value="">📅 Abonnement…</option><option value="1">+1 mois</option><option value="3">+3 mois</option><option value="6">+6 mois</option><option value="12">+12 mois</option><option value="vie">À vie</option><option value="retirer">Retirer (clé de licence)</option></select>'
+      +' <button class="btn bo bsm" onclick="clAdminNote(\''+c.user_id+'\')">📝</button></td>'
+      +'<td>'+(c.actif===false?'<span class="tag tag-out">⛔ Suspendu</span>':'<span class="tag tag-in">✅ Actif</span>')+'</td><td>'+ab+'</td>'
+      +'<td style="font-size:12px;white-space:nowrap">'+(c.vu_le?clIlYa(new Date(c.vu_le).getTime()):'—')+'</td>'+'</tr>';}).join('')+'</tbody></table></div>'
+    :'<div class="tbl-wrap"><div class="empty" style="padding:14px"><div class="et">Aucun compte</div></div></div>';
+  box.innerHTML=h;
+}
+async function clAdminActif(uid,actif){
+  const c=clAdminCache.find(function(x){return x.user_id===uid;})||{};
+  if(!confirm((actif?'Réactiver':'Suspendre')+' le compte '+(c.email||'')+' ?'+(actif?'':'\n\nLe client sera bloqué dès que son logiciel se connectera à internet. Ses données sont conservées.')))return;
+  try{const r=await clAdminModifier(uid,{actif:actif});Object.assign(c,r);clAdminRendre();toast(actif?'✅ Compte réactivé':'⛔ Compte suspendu');}catch(err){toast('❌ '+err.message,'❌');}
+}
+async function clAdminAbonnement(uid,v){
+  if(!v)return;
+  const c=clAdminCache.find(function(x){return x.user_id===uid;})||{};
+  let fin;
+  if(v==='retirer')fin=null;
+  else if(v==='vie')fin='2099-12-31T23:59:59Z';
+  else{const base=c.fin&&new Date(c.fin).getTime()>Date.now()?new Date(c.fin):new Date();base.setMonth(base.getMonth()+parseInt(v,10));fin=base.toISOString();}
+  const lib=v==='retirer'?'retirer l\'abonnement à distance (la clé de licence décidera)':(v==='vie'?'donner un accès à vie':'prolonger jusqu\'au '+licFmtDate(new Date(fin).getTime()));
+  if(!confirm('Pour '+(c.email||'ce client')+' : '+lib+' ?'))return;
+  try{const r=await clAdminModifier(uid,{fin:fin});Object.assign(c,r);clAdminRendre();toast('✅ Abonnement mis à jour');}catch(err){toast('❌ '+err.message,'❌');}
+}
+async function clAdminNote(uid){
+  const c=clAdminCache.find(function(x){return x.user_id===uid;})||{};
+  const n=prompt('Note pour '+(c.email||'ce client')+' (visible par le client s\'il est suspendu) :',c.note||'');
+  if(n===null)return;
+  try{const r=await clAdminModifier(uid,{note:n.trim()});Object.assign(c,r);clAdminRendre();}catch(err){toast('❌ '+err.message,'❌');}
+}
+
+// ----- 🔒 Carte « Sauvegarde en ligne » : déverrouillage, clé de secours, télécharger, supprimer -----
+(function(){const _a=clAfficher;clAfficher=function(){
+  _a.apply(this,arguments);
+  const box=document.getElementById('cloud-zone');if(!box||!clSession())return;
+  let h;
+  if(!clMKPresente()){
+    h='<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:10px;margin-top:9px;font-size:13px">🔒 Vos sauvegardes sont chiffrées. Entrez votre mot de passe du cloud pour les déverrouiller sur cet appareil.'
+      +'<input type="password" id="cl-dv-mdp" placeholder="Mot de passe du cloud" style="width:100%;margin-top:8px;border:1.5px solid var(--br);border-radius:8px;padding:9px;background:var(--card);color:var(--tx)">'
+      +'<button class="btn bp" style="width:100%;justify-content:center;margin-top:7px" onclick="clActionDeverrouiller()">🔓 Déverrouiller</button></div>';
+  } else {
+    h='<div style="font-size:12px;color:var(--g);margin-top:9px">🔒 Chiffrement de bout en bout : vous seul pouvez lire vos sauvegardes.</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button class="btn bo bsm" onclick="clActionVoirSecours()">🔑 Revoir ma clé de secours</button>'
+      +'<button class="btn bo bsm" onclick="clActionTelechargerCopie()">⬇️ Télécharger une copie</button>'
+      +'<button class="btn bo bsm" style="color:var(--r)" onclick="clActionSupprimerCopies()">🗑 Supprimer mes copies en ligne</button></div>';
+  }
+  box.insertAdjacentHTML('beforeend',h);
+};})();
+async function clActionDeverrouiller(){
+  const pw=(document.getElementById('cl-dv-mdp')||{}).value||'';
+  if(!pw){toast('Entrez votre mot de passe','❌');return;}
+  if(!clEnLigne()){toast('Pas de connexion internet','❌');return;}
+  try{
+    const s=clSession();await clConnexion(s.user.email,pw); // vérifie le mot de passe auprès du serveur
+    if(await clClesApresConnexion(pw)){toast('🔓 Sauvegardes déverrouillées');clMajEtat({modifie:true});clPlanifier(2000);}
+  }catch(err){toast('❌ '+err.message,'❌');}
+  clAfficher();
+}
+async function clActionVoirSecours(){
+  const pw=prompt('Pour afficher votre clé de secours, entrez votre mot de passe du cloud :');
+  if(!pw)return;
+  try{
+    const s=await clJeton(),o=await clClesLire(s);if(!o)throw new Error('Aucune clé trouvée');
+    if(!await clClesOuvrir(o,pw,false))throw new Error('Mot de passe incorrect');
+    const rk=new TextDecoder().decode(await clDeballer(await clMKCharger(),o.rk));
+    await clMontrerSecours(rk,false);
+  }catch(err){toast('❌ '+err.message,'❌');}
+}
+async function clActionTelechargerCopie(){
+  try{
+    const l=await clListe();const d=l.find(function(f){return /^latest/.test(f.name)&&f.app===clAppareil();})||l.find(function(f){return /^latest/.test(f.name);});
+    if(!d){toast('Aucune copie dans le cloud','❌');return;}
+    const res=await clTelecharger(d.name,d.app);
+    const nom='DagaCash_cloud_'+(res.envoyeLe||new Date().toISOString()).slice(0,10)+'.json';
+    await sauverFichier(new Blob([JSON.stringify(res.db,null,2)],{type:'application/json'}),nom,'application/json',false);
+    toast('⬇️ Copie téléchargée (fichier lisible, à garder en lieu sûr)');
+  }catch(err){toast('❌ '+err.message,'❌');}
+}
+async function clActionSupprimerCopies(){
+  if(!confirm('Supprimer TOUTES vos copies en ligne (tous vos appareils) ?\n\nLes données de ce téléphone ne sont pas touchées. La sauvegarde automatique sera désactivée.'))return;
+  if(!confirm('Confirmez : cette suppression est définitive.'))return;
+  try{
+    const s=await clJeton(),L=await clListe();
+    const ch=L.map(function(f){return s.user.id+'/'+f.app+'/'+f.name;});
+    const apps={};L.forEach(function(f){apps[f.app]=1;});
+    Object.keys(apps).forEach(function(a){ch.push(s.user.id+'/'+a+'/resume.enc',s.user.id+'/'+a+'/resume.json');});
+    await clSupprimer(s,ch);
+    clMajEtat({auto:false,modifie:false,dernierEnvoi:0});
+    toast('🗑 Copies en ligne supprimées');clAfficher();
+  }catch(err){toast('❌ '+err.message,'❌');}
+}
+
+(function(){const _g=goP;goP=function(id){const r=_g.apply(this,arguments);if(id==="parametres"){try{clAfficher();}catch(e){}}return r;};})();
 </script>
 </body>
 </html>
