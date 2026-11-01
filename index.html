@@ -5340,6 +5340,9 @@ function renderFicheProd(){
   const hist=p.historiqueEntrees||[];
   const totalEntre=hist.reduce(function(a,e){return a+e.qte;},0);
   const dEntree=dateEntreeStock(p);
+  const mvP=(DB.mouvements||[]).filter(function(m){return m.boutique===p.boutique&&m.produit===p.nom&&(!per.debut||String(m.date)>=per.debut)&&(!per.fin||String(m.date)<=per.fin);});
+  const sortiesHV=mvP.filter(function(m){return m.type==='Sortie'&&!/^Vente/.test(m.motif||'')&&!/^Sortie échange/.test(m.motif||'');});
+  const qSortieHV=qteSortieHorsVente(p,per.debut,per.fin);
   const coutConnu=svc||coutAcquisitionUnitaire(p)>0||!st.coutManquant;
   const card=function(ic,l,v,sub,c){return '<div class="kcard" style="flex:1 1 calc(50% - 6px);min-width:0"><div style="font-size:18px">'+ic+'</div><div class="klbl">'+l+'</div><div class="kval" style="color:'+(c||'var(--tx)')+';font-size:17px">'+v+'</div>'+(sub?'<div class="ksub">'+sub+'</div>':'')+'</div>';};
   const benTxt=st.coutManquant?'Coût non renseigné':fmt(st.benefice)+' '+dev;
@@ -5348,14 +5351,30 @@ function renderFicheProd(){
   h+=card('📦','Quantité restante en stock',svcEstIllimite(p)?'∞':p.qte+(p.typeVente==='poids'?' '+(p.unitesPoids||'kg'):''),'Stock disponible', p.qte<=p.seuil&&!svc?'var(--r)':'var(--g)');
   h+=card('📥','Quantité totale entrée',hist.length?totalEntre:(p.qteInitiale!==undefined&&!svc?p.qteInitiale:'—'),hist.length?hist.length+' entrée(s) tracée(s)':'Historique non disponible');
   h+=card('🛒','Quantité totale vendue',st.qteVendue,'Nette des retours et annulations');
+  h+=card('📤','Sorties hors vente',qSortieHV,sortiesHV.length?sortiesHV.length+' sortie(s) : pertes, cadeaux, transferts…':'Pertes, cadeaux, transferts, ajustements',qSortieHV?'var(--r)':'var(--tx)');
   h+=card('💰','Valeur totale des ventes',fmt(st.valeurVentes)+' '+dev,st.remises>0?'Prix normal : '+fmt(st.valeurPrixNormal)+' · remises : '+fmt(st.remises):'Prix facturés','var(--b)');
   h+=card('🏷️','Coût d’achat des quantités vendues',st.coutManquant?'Coût non renseigné':fmt(st.coutVendu)+' '+dev,'');
   h+=card('💵','Bénéfice total réalisé sur les ventes',benTxt,st.coutManquant?'Bénéfice non calculable':'Bénéfice brut (avant charges)',st.coutManquant?'var(--o)':(st.benefice>=0?'var(--g)':'var(--r)'));
   h+=card('🧮','Valeur du stock restant',fmt(valeurStockProd(p))+' '+dev,'Au coût d’achat');
   h+='</div>';
+  if(!svc&&!per.debut){
+    const ent=p.qteInitiale!==undefined?Number(p.qteInitiale):totalEntre,vend=Number(st.qteVendue)||0,sor=qSortieHV,reste=Number(p.qte)||0;
+    const autres=Math.round((reste-(ent-vend-sor))*1000)/1000;
+    h+='<div style="background:var(--bg);border:1px solid var(--br);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px">'
+      +'<div style="font-weight:700;margin-bottom:5px">🧾 Bilan des quantités</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-weight:600">'
+      +'<span style="color:var(--g)">📥 '+ent+' entré(s)</span><span>−</span><span style="color:var(--b)">🛒 '+vend+' vendu(s)</span><span>−</span><span style="color:var(--r)">📤 '+sor+' sorti(s)</span>'
+      +(autres?'<span>'+(autres>0?'+':'−')+'</span><span style="color:var(--o)">🔁 '+Math.abs(autres)+' autre(s)</span>':'')
+      +'<span>=</span><span style="font-size:15px;font-weight:800">📦 '+reste+' en stock</span></div>'
+      +(autres?'<div style="font-size:11px;color:var(--mu);margin-top:4px">« Autres » : retours, corrections, transferts reçus ou ajustements — voir l\'historique des mouvements ci-dessous.</div>':'')
+      +'</div>';
+  }
   h+='<div style="font-size:12px;font-weight:700;margin:6px 0">Historique des entrées en stock</div>';
   if(!hist.length)h+='<div style="font-size:12px;color:var(--mu);padding:8px">Aucune entrée tracée pour ce produit (date non renseignée).</div>';
   else h+='<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Qté</th><th>Coût unit.</th><th>Fournisseur</th></tr></thead><tbody>'+hist.slice().reverse().map(function(e){return '<tr><td style="white-space:nowrap">'+fD(e.date)+(e.heure?'<div style="font-size:11px;color:var(--mu)">🕒 '+e.heure+'</div>':'')+'</td><td>'+e.qte+'</td><td>'+(e.cout>0?fmt(e.cout)+' '+dev:'—')+'</td><td>'+(e.fournisseur||'—')+'</td></tr>';}).join('')+'</tbody></table></div>';
+  h+='<div style="font-size:12px;font-weight:700;margin:12px 0 6px">Historique des mouvements (entrées et sorties)</div>';
+  if(!mvP.length)h+='<div style="font-size:12px;color:var(--mu);padding:8px">Aucun mouvement sur cette période.</div>';
+  else h+='<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Mouvement</th><th>Qté</th><th>Motif</th></tr></thead><tbody>'+mvP.slice().sort(function(a,b){return String(b.date+' '+(b.heure||'')).localeCompare(String(a.date+' '+(a.heure||'')));}).slice(0,200).map(function(m){const e=m.type==='Entrée';return '<tr><td style="white-space:nowrap">'+fD(m.date)+(m.heure?'<div style="font-size:11px;color:var(--mu)">🕒 '+_de(m.heure)+'</div>':'')+'</td><td style="white-space:nowrap;font-weight:600;color:'+(e?'var(--g)':'var(--r)')+'">'+(e?'🟢 Entrée':'🔴 Sortie')+'</td><td style="font-weight:700;color:'+(e?'var(--g)':'var(--r)')+'">'+(e?'+':'−')+(Number(m.qte)||0)+'</td><td style="font-size:12px">'+_de(m.motif||'—')+'</td></tr>';}).join('')+'</tbody></table></div>';
   document.getElementById('fp-titre').textContent='📋 '+p.nom;
   document.getElementById('fp-corps').innerHTML=h;
 }
@@ -7898,6 +7917,15 @@ function resteTotalFournisseur(nom){
   const f=trouverFournisseur(nom);if(!f)return 0;
   return DB.commandes.filter(function(c){return c.fournisseurId===f.id&&c.boutique===DB.curB;}).reduce(function(a,c){return a+(c.reste||0);},0);
 }
+// Quantité réellement achetée pour une dette fournisseur de l'ancien système : montant de l'achat ÷ prix unitaire
+// (le stock restant n'est PAS la quantité achetée : des articles ont pu être vendus entre-temps)
+function fournQteAchetee(st,montant){
+  const pr=st.prix||{},cands=[Number(pr.prUnit)||0,Number(pr.pa)||0];
+  for(let i=0;i<cands.length;i++){const u=cands[i];if(u>0&&montant>0){const q=montant/u;if(q>0&&Math.abs(q-Math.round(q))<0.02)return Math.round(q);}}
+  if(Number(pr.ptotal)>0&&Number(pr.prUnit)>0){const q=Number(pr.ptotal)/Number(pr.prUnit);if(Math.abs(q-Math.round(q))<0.02&&q>0)return Math.round(q);}
+  if(st.qteInitiale!==undefined&&Number(st.qteInitiale)>=Number(st.qte))return Number(st.qteInitiale);
+  return Number(st.qte)||0;
+}
 // Migration unique : fournisseurs saisis dans l'ancien système d'entrée de stock → fiches fournisseurs + commandes
 function migrerFournisseursStock(){
   if(DB.migFournSync)return;
@@ -7911,7 +7939,7 @@ function migrerFournisseursStock(){
       const id=uid();
       const pr=st.prix||{};
       DB.commandes.push({id:id,boutique:st.boutique,fournisseurId:f.id,fournisseurNom:f.nom,date:tod(),source:'migration-stock',legacyStockId:st.id,
-        produits:[{nom:st.nom,qte:st.qte,pa:pr.pa||0,fraisRepartis:0,prUnit:pr.prUnit||0,prTotal:pr.ptotal||0,pv:pr.pv||0}],
+        produits:[{nom:st.nom,qte:fournQteAchetee(st,avance+reste),pa:pr.pa||0,fraisRepartis:0,prUnit:pr.prUnit||0,prTotal:pr.ptotal||0,pv:pr.pv||0}],
         totalAchat:avance+reste,totalFrais:0,totalCommande:avance+reste,avance:avance,reste:reste,datePaiement:st.fourn.datePaiement||'',statutPaiement:'en-cours'});
       f.commandes.push(id);
       st.fourn.avance=0;st.fourn.reste=0;st.fourn.datePaiement='';
@@ -11372,6 +11400,10 @@ function renderInvOverview(){
 }
 
 // Onglet 2 : Stock
+function qteSortieHorsVente(p,debut,fin){
+  return (DB.mouvements||[]).filter(function(m){return m.boutique===p.boutique&&m.produit===p.nom&&m.type==='Sortie'&&!/^Vente/.test(m.motif||'')&&!/^Sortie échange/.test(m.motif||'')&&(!debut||String(m.date)>=debut)&&(!fin||String(m.date)<=fin);})
+    .reduce(function(a,m){return a+(Number(m.qte)||0);},0);
+}
 function renderInvStock(filter){
   const s=shop();
   let stocks=stocksS();
@@ -11398,6 +11430,7 @@ function renderInvStock(filter){
     rows+='<td>'+(p.prix?.pvMin>0?fmt(p.prix.pvMin):fmt(p.prix?.pv||0))+'</td>';
     rows+='<td>'+fmt(p.prix?.pv||0)+'</td>';
     rows+='<td>'+qteVendue+'</td>';
+    {const qs=estService(p)?0:qteSortieHorsVente(p);rows+='<td style="color:'+(qs?'var(--r)':'var(--mu)')+';font-weight:'+(qs?'700':'400')+'">'+(estService(p)?'—':qs)+'</td>';}
     rows+='<td style="font-weight:700;color:'+(p.qte<=0?'var(--r)':p.qte<=p.seuil?'var(--o)':'var(--g)')+'">'+(svcEstIllimite(p)?'∞':p.qte)+'</td>';
     rows+='<td style="color:var(--b)">'+fmt(valStock)+' '+s.devise+'</td>';
     rows+='<td>'+fmt(valVenteMin)+' '+s.devise+'</td>';
@@ -11409,7 +11442,7 @@ function renderInvStock(filter){
     rows+='<td style="white-space:nowrap">'+(dateEntreeStock(p)?fD(dateEntreeStock(p)):'Non renseignée')+'</td>';
     rows+='</tr>';
   });
-  document.getElementById('inv-stock-list').innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Article</th><th>Qté Initiale</th><th>Prix Revient</th><th>Prix Min</th><th>Prix Vente</th><th>Qté Vendue</th><th>Stock</th><th>Valeur stock (coût)</th><th>Valeur vente min.</th><th>Marge potentielle</th><th>Valeur des ventes</th><th>Coût vendu</th><th>Bénéfice brut</th><th>Date d’entrée</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  document.getElementById('inv-stock-list').innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Article</th><th>Qté Entrée</th><th>Prix Revient</th><th>Prix Min</th><th>Prix Vente</th><th>Qté Vendue</th><th>Qté Sortie<div style="font-size:10px;font-weight:500;text-transform:none">(déstockage, perte…)</div></th><th>Stock</th><th>Valeur stock (coût)</th><th>Valeur vente min.</th><th>Marge potentielle</th><th>Valeur des ventes</th><th>Coût vendu</th><th>Bénéfice brut</th><th>Date d’entrée</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
 function filterInvStock(q){renderInvStock(q);}
@@ -18125,7 +18158,7 @@ function vdValiderAcces(boutiqueId){
   toast('✅ Connecté à '+(((DB.boutiques||[]).find(function(x){return x.id===boutiqueId;})||{}).name||'la boutique')+' ('+vendCode(v)+')');
 }
 // Sécurité : une session vendeur reste toujours dans la boutique de ce vendeur
-setInterval(function(){try{if(currentSession&&currentSession.role==='vendeur'){const v=DB.vendeurs.find(function(x){return x.id===currentSession.vendeurId;});if(v&&DB.curB!==v.boutique&&window.__vdSwitchB)window.__vdSwitchB(v.boutique);}}catch(e){}},3000);
+setInterval(function(){try{if(currentSession&&currentSession.role==='vendeur'){const v=DB.vendeurs.find(function(x){return x.id===currentSession.vendeurId;});if(v&&DB.curB!==v.boutique&&!(typeof vdSessionPeutEtre==='function'&&vdSessionPeutEtre(DB.curB))&&window.__vdSwitchB)window.__vdSwitchB(v.boutique);}}catch(e){}},3000);
 </script>
 <script type="text/dcm-defer">
 // ===== MOT DE PASSE DES EMPLOYÉS = LETTRE DE LA BOUTIQUE + suite choisie par le gérant (A…, B…, C…) =====
@@ -18739,7 +18772,7 @@ async function cmdOuvrir(){
 }
 function cmdFermer(){const ov=document.getElementById('cmd-ov');if(ov)ov.remove();}
 function cmdBoutonHTML(clair){return '<button type="button" class="cmd-btn" onclick="cmdOuvrir()" style="width:100%;background:'+(clair?'#F59E0B':'#F59E0B')+';color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;margin-top:10px">🛒 Commander votre accès</button>';}
-// --- Écran de connexion du compte : 2 boutons clairs « Créer mon compte » / « Connexion » ---
+// --- Écran de connexion du compte : 2 boutons clairs « Créer mon compte » / « Se connecter » ---
 // « Créer mon compte » crée le compte (clé de secours, etc. comme avant) PUIS ouvre « Commander votre accès ».
 function cmdPorteCloud(){
   const g=document.getElementById('cl-gate');if(!g)return;
@@ -18748,11 +18781,11 @@ function cmdPorteCloud(){
     if(g.getAttribute('data-cmd'))return;g.setAttribute('data-cmd','1');
     bCr.innerHTML='➕ Créer mon compte';
     bCr.style.cssText='width:100%;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700;margin-top:12px;cursor:pointer';
-    bCo.innerHTML='🔑 Connexion';
+    bCo.innerHTML='🔑 Se connecter';
     bCo.style.cssText='width:100%;background:#fff;color:#2563EB;border:1.5px solid #2563EB;border-radius:9px;padding:11px;font-size:14px;font-weight:700;margin-top:8px;cursor:pointer';
     bCo.parentNode.insertBefore(bCr,bCo);
     bCr.insertAdjacentHTML('afterend','<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:5px">Nouveau client : créez votre compte, puis commandez votre accès.</div>');
-    bCo.insertAdjacentHTML('afterend','<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:5px">Vous avez déjà un compte (par exemple sur un autre téléphone) : connectez-vous.</div>');
+    bCo.insertAdjacentHTML('afterend','<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:5px">Vous avez déjà un compte (par exemple sur un autre téléphone) : connectez-vous.</div><div style="text-align:center;margin-top:7px"><a href="#" id="clg-oubli" onclick="event.preventDefault();mdpOublie()" style="font-size:12.5px;color:#2563EB;font-weight:600">Mot de passe oublié ?</a></div>');
     return;
   }
   // Compte suspendu / vérification : on garde le bouton de commande pour payer et être réactivé
@@ -18841,6 +18874,238 @@ async function cmdAdminEnregistrer(){
     return p;
   };
 })();
+</script>
+
+<script type="text/dcm-defer">
+// ===== RÉPARATION UNIQUE : quantités des anciennes dettes fournisseurs (migration) et reçus déjà émis =====
+(function(){
+  try{
+    if(!DB.config)DB.config={};
+    if(DB.config.fournQteRepare)return;
+    let n=0;
+    (DB.commandes||[]).forEach(function(c){
+      if(c.source!=='migration-stock'||!Array.isArray(c.produits)||c.produits.length!==1)return;
+      const x=c.produits[0],st=(DB.stocks||[]).find(function(p){return p.id===c.legacyStockId;})||{prix:{pa:x.pa,prUnit:x.prUnit,ptotal:x.prTotal},qte:x.qte};
+      const q=fournQteAchetee({prix:{pa:x.pa,prUnit:x.prUnit,ptotal:x.prTotal},qte:x.qte,qteInitiale:st.qteInitiale},Number(c.totalCommande)||Number(c.totalAchat)||0);
+      if(q>0&&q!==x.qte){
+        x.qte=q;n++;
+        (DB.recusFournisseur||[]).forEach(function(r){if(r.commandeId===c.id&&Array.isArray(r.articles)&&r.articles.length===1){r.articles[0].qte=q;r.articles[0].total=Math.round((Number(r.articles[0].pu)||0)*q*100)/100;}});
+      }
+    });
+    DB.config.fournQteRepare=true;save();
+    if(n)console.log('Quantités fournisseurs corrigées :',n);
+  }catch(e){console.error('réparation quantités fournisseurs',e);}
+})();
+</script>
+<script type="text/dcm-defer">
+// ===== 🏪 BOUTIQUES AUTORISÉES PAR EMPLOYÉ =====
+// Le gérant coche, dans la fiche du vendeur (RH → Vendeurs & accès), les boutiques auxquelles l'employé a accès
+// (en plus de sa boutique principale), comme il coche les modules.
+// Un employé ne voit QUE ses boutiques autorisées. Pour passer de l'une à l'autre, il CONFIRME SON PROPRE mot de passe.
+// Compatibilité : un employé qui avait déjà un identifiant séparé dans une autre boutique (même nom et prénom) garde cet accès.
+function vdMoi(){if(!currentSession||currentSession.role!=='vendeur')return null;return (DB.vendeurs||[]).find(function(x){return x.id===currentSession.vendeurId;})||null;}
+function vdExisteB(id){return (DB.boutiques||[]).some(function(b){return b.id===id;});}
+function vdBoutiquesAutorisees(v){
+  if(!v)return [];
+  const out=[v.boutique];
+  (Array.isArray(v.boutiques)?v.boutiques:[]).forEach(function(id){if(vdExisteB(id)&&out.indexOf(id)<0)out.push(id);});
+  const cle=vdNorm(v.nom)+'|'+vdNorm(v.prenom);
+  (DB.vendeurs||[]).forEach(function(x){if(x.id!==v.id&&vdNorm(x.nom)+'|'+vdNorm(x.prenom)===cle&&vdExisteB(x.boutique)&&out.indexOf(x.boutique)<0)out.push(x.boutique);});
+  return out;
+}
+// Ancienne fonction : boutiques accessibles en dehors de la boutique principale
+vdBoutiquesAccessibles=function(){const v=vdMoi();return vdBoutiquesAutorisees(v).filter(function(id){return !v||id!==v.boutique;});};
+// La session peut-elle rester dans cette boutique ? (utilisé par le contrôle de sécurité automatique)
+function vdSessionPeutEtre(id){const v=vdMoi();return !!(v&&currentSession&&currentSession.debloque===id&&vdBoutiquesAutorisees(v).indexOf(id)>=0);}
+(function(){
+  // --- Fiche vendeur : cases « Boutiques autorisées » ---
+  function bqBoutiqueForm(){const eid=(document.getElementById('vd-eid')||{}).value;const v=eid?DB.vendeurs.find(function(x){return x.id===eid;}):null;return v?v.boutique:DB.curB;}
+  function bqInjecter(){
+    const m=document.getElementById('m-vendeur');if(!m)return;
+    let w=document.getElementById('vd-bq-wrap');
+    if(!w){
+      const titre=[...m.querySelectorAll('div')].find(function(d){return d.children.length===0&&/Accès aux modules/.test(d.textContent);});
+      w=document.createElement('div');w.id='vd-bq-wrap';w.style.margin='11px 0 4px';
+      if(titre)titre.parentNode.insertBefore(w,titre);else{const p=document.getElementById('vd-pwd');(p&&p.closest('.fg')||m.querySelector('.modal')).appendChild(w);}
+    }
+    const eid=(document.getElementById('vd-eid')||{}).value,v=eid?DB.vendeurs.find(function(x){return x.id===eid;}):null;
+    const home=bqBoutiqueForm(),sel=v&&Array.isArray(v.boutiques)?v.boutiques:[];
+    const bs=DB.boutiques||[];
+    w.innerHTML='<div style="font-size:13px;font-weight:700;margin-bottom:5px">🏪 Boutiques autorisées</div>'
+      +'<div style="font-size:12px;color:var(--mu);margin-bottom:7px">Cochez les boutiques où cet employé peut travailler. Pour passer d\'une boutique à l\'autre, il devra confirmer son mot de passe.</div>'
+      +'<div style="border:1px solid var(--br);border-radius:10px;padding:6px 10px">'
+      +bs.map(function(b){
+        const h=b.id===home,on=h||sel.indexOf(b.id)>=0;
+        return '<label style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:14px;'+(h?'opacity:.8':'')+'"><input type="checkbox" class="vd-bq-cb" data-b="'+b.id+'" '+(on?'checked ':'')+(h?'disabled ':'')+'style="width:18px;height:18px">'
+          +'<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:var(--bg);font-weight:800;font-size:12px">'+bLettre(b.id)+'</span>'
+          +_de(b.name||'Boutique')+(h?' <span style="font-size:11px;color:var(--mu)">(boutique principale)</span>':'')+'</label>';
+      }).join('')+'</div>';
+  }
+  const _ov=openVendeurModal;openVendeurModal=function(){const r=_ov.apply(this,arguments);try{bqInjecter();}catch(e){console.error(e);}return r;};
+  const _ev=editVendeur;editVendeur=function(){const r=_ev.apply(this,arguments);try{bqInjecter();}catch(e){console.error(e);}return r;};
+  const _sv=saveVendeur;saveVendeur=function(){
+    const eid=(document.getElementById('vd-eid')||{}).value,home=bqBoutiqueForm();
+    const choix=[...document.querySelectorAll('#vd-bq-wrap .vd-bq-cb')].filter(function(c){return c.checked&&c.dataset.b!==home;}).map(function(c){return c.dataset.b;});
+    const avant=(DB.vendeurs||[]).length;
+    const r=_sv.apply(this,arguments);
+    try{
+      const m=document.getElementById('m-vendeur');
+      if(m&&m.classList.contains('open'))return r; // non enregistré (champ manquant)
+      const v=eid?DB.vendeurs.find(function(x){return x.id===eid;}):(DB.vendeurs.length>avant?DB.vendeurs[DB.vendeurs.length-1]:null);
+      if(v){v.boutiques=choix;save();}
+    }catch(e){console.error(e);}
+    return r;
+  };
+  // --- Liste des boutiques vue par un employé : seulement ses boutiques autorisées ---
+  const _rbm=renderBoutiquesModal;renderBoutiquesModal=function(){
+    const r=_rbm.apply(this,arguments);
+    const v=vdMoi();if(!v)return r;
+    const ok=vdBoutiquesAutorisees(v);
+    document.getElementById('boutiques-list').innerHTML=(DB.boutiques||[]).filter(function(b){return ok.indexOf(b.id)>=0;}).map(function(b){
+      const ici=b.id===DB.curB;
+      return '<div data-vdb="'+b.id+'" style="margin-bottom:6px;border-radius:10px;border:'+(ici?'1.5px solid var(--b)':'1px solid var(--br)')+';background:'+(ici?'rgba(37,99,235,.07)':'transparent')+'">'
+        +'<div onclick="switchB(\''+b.id+'\')" style="display:flex;align-items:center;gap:9px;padding:10px;cursor:pointer">'
+        +'<div style="width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;background:var(--bg)">'+bLettre(b.id)+'</div>'
+        +'<div style="flex:1"><div style="font-size:15px;font-weight:600">'+_de(b.name||'Boutique')+'</div><div style="font-size:12px;color:var(--mu)">'+(ici?'Votre boutique actuelle':'🔒 Confirmez votre mot de passe pour y aller')+'</div></div>'
+        +(ici?'<span style="color:var(--b);font-size:18px">✓</span>':'<span>🔒</span>')+'</div></div>';
+    }).join('')+(ok.length<2?'<div style="font-size:12px;color:var(--mu);margin-top:6px">Vous n\'avez accès qu\'à cette boutique. Le gérant peut vous en autoriser d\'autres.</div>':'');
+    return r;
+  };
+  // --- Changer de boutique : seulement vers une boutique autorisée, après confirmation du mot de passe ---
+  const _sw=switchB;switchB=function(id){
+    const v=vdMoi();
+    if(v){
+      if(id===DB.curB){closeM('m-boutiques');return;}
+      if(vdBoutiquesAutorisees(v).indexOf(id)<0){toast('⛔ Vous n\'avez pas accès à cette boutique','⛔');return;}
+      vdDemanderAcces(id);return;
+    }
+    return _sw.apply(this,arguments);
+  };
+  const _vd=vdBande;vdBande=function(id){
+    const r=_vd.apply(this,arguments);
+    const i=document.getElementById('vdb-pwd');if(i)i.placeholder='Votre mot de passe';
+    return r;
+  };
+  vdBandeValider=function(id){
+    const pwd=(document.getElementById('vdb-pwd')||{}).value||'',err=document.getElementById('vdb-err');
+    const msg=function(t){if(err){err.textContent=t;err.style.display='block';}};
+    const bloque=(typeof licEssaisBloque==='function')?licEssaisBloque():0;
+    if(bloque){msg('Trop d\'essais. Réessayez dans '+bloque+' min.');return;}
+    if(!pwd){msg('Entrez votre mot de passe');return;}
+    const moi=vdMoi();if(!moi)return;
+    if(vdBoutiquesAutorisees(moi).indexOf(id)<0){msg('⛔ Vous n\'avez pas accès à cette boutique');return;}
+    let v=null;
+    if(vendPwdOk(moi,pwd))v=moi;
+    else{ // ancien système : identifiant séparé de la même personne dans la boutique visée
+      const cle=vdNorm(moi.nom)+'|'+vdNorm(moi.prenom);
+      v=(DB.vendeurs||[]).find(function(x){return x.boutique===id&&vdNorm(x.nom)+'|'+vdNorm(x.prenom)===cle&&vendPwdOk(x,pwd);})||null;
+    }
+    if(!v){try{licEchec();}catch(e){}msg('❌ Mot de passe incorrect');return;}
+    try{licReussite();}catch(e){}
+    closeM('m-boutiques');
+    currentSession={role:'vendeur',vendeurId:v.id,numero:v.numero,nom:v.nom+' '+(v.prenom||''),debloque:id};
+    document.querySelectorAll('.vd-bande').forEach(function(e){e.remove();});
+    window.__vdSwitchB(id);
+    try{applyRolePermissions();}catch(e){}
+    try{const vn=document.getElementById('v-vendnum');if(vn)vn.value=v.numero;}catch(e){}
+    toast('✅ Bienvenue dans '+(((DB.boutiques||[]).find(function(x){return x.id===id;})||{}).name||'la boutique'));
+  };
+})();
+</script>
+
+<script type="text/dcm-defer">
+// ===== 🔑 CONNEXION AU COMPTE : messages clairs, tolérance du clavier téléphone, mot de passe oublié =====
+// - Sur téléphone, le clavier ajoute parfois une majuscule au début de l'e-mail ou un espace à la fin du mot de passe :
+//   si la connexion est refusée, on réessaie automatiquement avec l'e-mail en minuscules et sans espaces autour.
+// - « Mot de passe oublié ? » : Supabase envoie un lien par e-mail ; ce lien rouvre le logiciel sur l'écran
+//   « Nouveau mot de passe ». Les sauvegardes chiffrées restent lisibles grâce à la clé de secours (demandée une fois).
+(function(){
+  const _msg=clMsgErreur;
+  clMsgErreur=function(j,d){
+    const m=_msg.apply(this,arguments);
+    if(m==='E-mail ou mot de passe incorrect')return 'Mot de passe incorrect pour cet e-mail (ou e-mail inconnu). Vérifiez les majuscules et minuscules. Oublié ? Appuyez sur « Mot de passe oublié ? ».';
+    if(/^Ce compte existe déjà/.test(m))return 'Ce compte existe déjà : appuyez sur « 🔑 Se connecter » (et non « Créer mon compte »).';
+    return m;
+  };
+  window.__clMdpEffectif=null;
+  const _cx=clConnexion;
+  clConnexion=async function(email,mdp){
+    window.__clMdpEffectif=null;
+    try{return await _cx.apply(this,arguments);}
+    catch(e){
+      const em2=String(email||'').trim().toLowerCase(),p2=String(mdp||'').trim();
+      if(!/incorrect/i.test(String(e.message))||(em2===email&&p2===mdp))throw e;
+      try{const s=await _cx(em2,p2);window.__clMdpEffectif=p2;return s;}catch(e2){throw e;}
+    }
+  };
+  const _ins=clInscription;
+  clInscription=function(email,mdp){return _ins.call(this,String(email||'').trim().toLowerCase(),mdp);};
+  const _ck=clClesApresConnexion;
+  clClesApresConnexion=function(mdp){const m=window.__clMdpEffectif!=null?window.__clMdpEffectif:mdp;window.__clMdpEffectif=null;return _ck.call(this,m);};
+  // Erreur « compte existe déjà » : on met en avant le bouton Se connecter
+  const _pe=clPorteErreur;
+  clPorteErreur=function(m){
+    const r=_pe.apply(this,arguments);
+    try{const e=document.getElementById('clg-err');if(e)e.style.color='#EF4444';
+      if(/existe déjà/.test(String(m))){const b=document.querySelector('#cl-gate button[onclick="clPorteConnexion(false)"]');if(b){b.style.boxShadow='0 0 0 4px rgba(37,99,235,.35)';setTimeout(function(){b.style.boxShadow='';},4000);}}}catch(x){}
+    return r;
+  };
+})();
+function mdpInfo(t,ok){const e=document.getElementById('clg-err');if(!e)return;e.textContent=t;e.style.display='block';e.style.color=ok?'#15803D':'#EF4444';}
+async function mdpOublie(){
+  const em=((document.getElementById('clg-email')||{}).value||'').trim().toLowerCase();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){mdpInfo('Tapez d\'abord votre e-mail ci-dessus, puis appuyez sur « Mot de passe oublié ? ».');return;}
+  if(!clEnLigne()){mdpInfo('Pas de connexion internet');return;}
+  if(!confirm('Recevoir un lien pour choisir un nouveau mot de passe à l\'adresse :\n'+em+' ?'))return;
+  try{
+    const red=location.origin+location.pathname;
+    const r=await clFetch('/auth/v1/recover?redirect_to='+encodeURIComponent(red),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em})});
+    if(!r.ok){const j=await clJson(r);const t=String((j&&(j.msg||j.message||j.error_description))||'');mdpInfo(/rate|limit|seconds|security purposes/i.test(t)?'Trop de demandes rapprochées : réessayez dans quelques minutes.':clMsgErreur(j,'Envoi impossible ('+r.status+')'));return;}
+    mdpInfo('📧 Si un compte existe pour '+em+', un e-mail vient d\'être envoyé. Ouvrez le lien qu\'il contient sur CE téléphone pour choisir un nouveau mot de passe (regardez aussi dans les spams).',true);
+  }catch(e){mdpInfo(e.message||'Envoi impossible');}
+}
+// Retour depuis le lien reçu par e-mail : #access_token=…&type=recovery (ou une erreur si le lien a expiré)
+function mdpLireLien(){
+  const h=String(location.hash||'').replace(/^#/,'');if(!h)return null;
+  const q={};h.split('&').forEach(function(x){const i=x.indexOf('=');if(i>0)q[decodeURIComponent(x.slice(0,i))]=decodeURIComponent(x.slice(i+1).replace(/\+/g,' '));});
+  if(q.type==='recovery'&&q.access_token)return q;
+  if(q.error_code||q.error_description)return {erreur:q.error_description||q.error_code};
+  return null;
+}
+function mdpEcran(q){
+  let ov=document.getElementById('mdp-ov');if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='mdp-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:20040;background:linear-gradient(135deg,#1E40AF,#0F172A);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto';
+  const champ='width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:8px;padding:11px 12px;font-size:15px;margin-bottom:8px;color:#111';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:24px 20px;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);color:#1F2937">'
+    +(q.erreur?'<div style="font-size:34px;text-align:center">⏰</div><div style="font-size:17px;font-weight:800;text-align:center;margin:4px 0 8px">Lien expiré ou déjà utilisé</div><div style="font-size:13px;color:#4B5563;text-align:center;line-height:1.5">Redemandez un lien : écran de connexion → tapez votre e-mail → « Mot de passe oublié ? ».</div><button type="button" id="mdp-fin" style="width:100%;margin-top:14px;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700">OK</button>'
+    :'<div style="font-size:34px;text-align:center">🔑</div><div style="font-size:17px;font-weight:800;text-align:center;margin:4px 0 10px">Choisissez un nouveau mot de passe</div>'
+      +'<input type="password" id="mdp-n1" placeholder="Nouveau mot de passe (6 caractères min.)" autocomplete="new-password" style="'+champ+'">'
+      +'<input type="password" id="mdp-n2" placeholder="Confirmez le mot de passe" autocomplete="new-password" style="'+champ+'">'
+      +'<div id="mdp-err" style="display:none;color:#EF4444;font-size:12px;font-weight:600;margin:2px 0 6px"></div>'
+      +'<button type="button" id="mdp-ok" style="width:100%;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700">✅ Enregistrer le nouveau mot de passe</button>'
+      +'<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:10px;line-height:1.5">Vos sauvegardes en ligne sont chiffrées : à la prochaine connexion, votre <b>clé de secours</b> vous sera demandée une seule fois.</div>')
+    +'</div>';
+  document.body.appendChild(ov);
+  const nettoyer=function(){try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}};
+  if(q.erreur){ov.querySelector('#mdp-fin').onclick=function(){ov.remove();nettoyer();try{clPorte();}catch(e){}};return;}
+  ov.querySelector('#mdp-ok').onclick=async function(){
+    const a=ov.querySelector('#mdp-n1').value,b=ov.querySelector('#mdp-n2').value,err=ov.querySelector('#mdp-err');
+    const e=function(t){err.textContent=t;err.style.display='block';};
+    if(a.length<6){e('6 caractères minimum');return;}
+    if(a!==b){e('Les deux mots de passe ne sont pas identiques');return;}
+    this.disabled=true;
+    try{
+      const r=await clFetch('/auth/v1/user',{method:'PUT',headers:{Authorization:'Bearer '+q.access_token,'Content-Type':'application/json'},body:JSON.stringify({password:a})});
+      const j=await clJson(r);
+      if(!r.ok){const t=String((j&&(j.msg||j.message||j.error_description))||'');throw new Error(/different/i.test(t)?'Choisissez un mot de passe différent de l\'ancien':(/expired|invalid/i.test(t)?'Ce lien a expiré : redemandez-en un':clMsgErreur(j,'Modification refusée')));}
+      nettoyer();
+      ov.querySelector('div').innerHTML='<div style="font-size:34px;text-align:center">✅</div><div style="font-size:17px;font-weight:800;text-align:center;margin:4px 0 8px">Mot de passe changé</div><div style="font-size:13px;color:#4B5563;text-align:center;line-height:1.5">Connectez-vous maintenant avec votre e-mail et votre <b>nouveau</b> mot de passe. Votre clé de secours vous sera demandée une seule fois.</div><button type="button" id="mdp-fin" style="width:100%;margin-top:14px;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700">🔑 Se connecter</button>';
+      ov.querySelector('#mdp-fin').onclick=function(){ov.remove();try{clPorte();}catch(x){}const i=document.getElementById('clg-email');if(i&&q.email)i.value=q.email;};
+    }catch(x){this.disabled=false;e(x.message||'Erreur');}
+  };
+}
+try{const q=mdpLireLien();if(q)setTimeout(function(){mdpEcran(q);},800);}catch(e){}
 </script>
 
 </body>
