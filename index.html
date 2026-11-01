@@ -1034,7 +1034,8 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
       <div style="font-weight:700;font-size:14px">🏢 Informations de l'entreprise <span style="font-weight:400;font-size:12px;color:var(--mu)">(facultatif)</span></div>
       <div style="font-size:11px;color:var(--mu);margin:3px 0 10px">Affichées sous le nom sur les factures et reçus. Chaque boutique peut avoir ses propres informations (Boutiques) ; à défaut, celles-ci sont utilisées.</div>
       <div class="fg"><label>RCCM</label><input type="text" id="p-rccm" placeholder="Ex : CD/KIN/RCCM/…" autocomplete="off"></div>
-      <div class="fg"><label>IFU</label><input type="text" id="p-ifu" placeholder="N° d'identification fiscale" autocomplete="off"></div>
+      <div class="fg"><label>ID-NAT <span style="font-size:11px;color:var(--mu)">(Identification nationale)</span></label><input type="text" id="p-idnat" placeholder="Ex : 01-XXXX-N12345X" autocomplete="off"></div>
+      <div class="fg"><label>NIF <span style="font-size:11px;color:var(--mu)">(N° d'identification fiscale — DGI)</span></label><input type="text" id="p-ifu" placeholder="Ex : A1234567B" autocomplete="off"></div>
       <div class="fg"><label>Téléphone</label><input type="text" id="p-tel" placeholder="+243 …" autocomplete="off"></div>
       <div class="fg" style="margin-bottom:0"><label>Adresse</label><input type="text" id="p-adr" placeholder="Rue, commune, ville" autocomplete="off"></div>
     </div>
@@ -1304,8 +1305,9 @@ body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font
     </div>
     <div class="fg"><label>Adresse</label><input type="text" id="b-addr"></div>
     <div class="fg"><label>RCCM <span style="font-size:11px;color:var(--mu)">(facultatif)</span></label><input type="text" id="b-rccm" autocomplete="off"></div>
-    <div class="fg"><label>IFU <span style="font-size:11px;color:var(--mu)">(facultatif)</span></label><input type="text" id="b-ifu" autocomplete="off"></div>
-    <div style="font-size:11px;color:var(--mu);margin:-4px 0 11px">Adresse, téléphone, RCCM et IFU s'affichent sous le nom de cette boutique sur ses factures et reçus. Un champ vide reprend la valeur du Profil, ou n'est pas affiché.</div>
+    <div class="fg"><label>ID-NAT <span style="font-size:11px;color:var(--mu)">(facultatif)</span></label><input type="text" id="b-idnat" autocomplete="off"></div>
+    <div class="fg"><label>NIF <span style="font-size:11px;color:var(--mu)">(facultatif)</span></label><input type="text" id="b-ifu" autocomplete="off"></div>
+    <div style="font-size:11px;color:var(--mu);margin:-4px 0 11px">Adresse, téléphone, RCCM, ID-NAT et NIF s'affichent sous le nom de cette boutique sur ses factures et reçus. Un champ vide reprend la valeur du Profil, ou n'est pas affiché.</div>
     <div style="background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.2);border-radius:9px;padding:12px;margin-bottom:11px">
       <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--b)">💱 Taux de change</div>
       <div class="fg"><label>1 $ Dollar =</label>
@@ -3218,7 +3220,7 @@ Activer le verrouillage du logiciel => Enable software lock
 Administrateur => Administrator
 Adresse Client => Customer address
 Adresse fournisseur => Supplier address
-Adresse, téléphone, RCCM et IFU s'affichent sous le nom de cette boutique sur ses factures et reçus. Un champ vide reprend la valeur du Profil, ou n'est pas affiché. => Address, phone, trade register and tax ID are shown under this shop's name on its invoices and receipts. An empty field uses the Profile value, or is not shown.
+Adresse, téléphone, RCCM, ID-NAT et NIF s'affichent sous le nom de cette boutique sur ses factures et reçus. Un champ vide reprend la valeur du Profil, ou n'est pas affiché. => Address, phone, trade register and tax ID are shown under this shop's name on its invoices and receipts. An empty field uses the Profile value, or is not shown.
 Adresse => Address
 Affiche les alertes visuelles et le champ date de péremption dans le stock. => Shows visual alerts and the expiry date field in stock.
 Affichées sous le nom sur les factures et reçus. Chaque boutique peut avoir ses propres informations (Boutiques) ; à défaut, celles-ci sont utilisées. => Shown under the name on invoices and receipts. Each shop can have its own details (Shops); otherwise these are used.
@@ -5029,20 +5031,20 @@ function uid(){return Date.now().toString(36)+Math.random().toString(36).substr(
 function getMon(d){const dt=new Date(d+'T12:00:00');const day=dt.getDay();dt.setDate(dt.getDate()-day+(day===0?-6:1));return localISO(dt);}
 function getWD(mon){return Array.from({length:7},(_,i)=>{const d=new Date(mon+'T12:00:00');d.setDate(d.getDate()+i);return localISO(d);});}
 function shop(){return DB.boutiques.find(b=>b.id===DB.curB)||DB.boutiques[0];}
-// ===== Informations de l'entreprise sur les factures et reçus (RCCM, IFU, téléphone, adresse — tous facultatifs) =====
+// ===== Informations de l'entreprise sur les factures et reçus (RCCM, ID-NAT, NIF, téléphone, adresse — tous facultatifs) =====
 // Valeur propre à la boutique ; à défaut, valeur générale de l'entreprise (Profil). Jamais les données d'une autre boutique.
 function infosEntreprise(boutiqueId){
   const b=(DB.boutiques||[]).find(function(x){return x.id===boutiqueId;})||shop()||{},u=DB.user||{};
   const pick=function(a,c){a=String(a==null?'':a).trim();return a||String(c==null?'':c).trim();};
-  return {nom2:pick(b.name2,u.name2),rccm:pick(b.rccm,u.rccm),ifu:pick(b.ifu,u.ifu),tel:pick(b.phone,u.tel),adr:pick(b.addr,u.adr)};
+  return {nom2:pick(b.name2,u.name2),rccm:pick(b.rccm,u.rccm),idnat:pick(b.idnat,u.idnat),ifu:pick(b.ifu,u.ifu),tel:pick(b.phone,u.tel),adr:pick(b.addr,u.adr)};
 }
 // Boutique à laquelle appartient le document (et non la boutique actuellement affichée)
 function boutiqueDuDocument(doc){return (DB.boutiques||[]).find(function(x){return x.id===(doc&&doc.boutique);})||shop();}
 // Lignes à afficher sous le nom. Document créé avant cette fonction (sans copie figée) : présentation d'origine, inchangée.
 function lignesEntete(doc,b,legacyAvecCoord){
   const e=doc&&doc.entreprise;
-  if(!e)return legacyAvecCoord?{adr:b.addr||'',tel:b.phone||'',rccm:'',ifu:''}:{adr:'',tel:'',rccm:'',ifu:''};
-  return {adr:e.adr||'',tel:e.tel||'',rccm:e.rccm||'',ifu:e.ifu||''};
+  if(!e)return legacyAvecCoord?{adr:b.addr||'',tel:b.phone||'',rccm:'',idnat:'',ifu:''}:{adr:'',tel:'',rccm:'',idnat:'',ifu:''};
+  return {adr:e.adr||'',tel:e.tel||'',rccm:e.rccm||'',idnat:e.idnat||'',ifu:e.ifu||''};
 }
 // Nom secondaire : celui figé sur le document ; pour un ancien document, celui de sa boutique (à défaut, celui du profil)
 function nom2Doc(doc,b){
@@ -5063,7 +5065,7 @@ function logoPret(src){
 }
 function enteteInfosHTML(doc,b,style,legacyAvecCoord){
   const l=lignesEntete(doc,b,legacyAvecCoord),ln=function(t){return '<div style="'+style+';word-break:break-word">'+_de(t)+'</div>';};
-  return (l.adr?ln(l.adr):'')+(l.tel?ln('Tél : '+l.tel):'')+(l.rccm?ln('RCCM : '+l.rccm):'')+(l.ifu?ln('IFU : '+l.ifu):'');
+  return (l.adr?ln(l.adr):'')+(l.tel?ln('Tél : '+l.tel):'')+(l.rccm?ln('RCCM : '+l.rccm):'')+(l.idnat?ln('ID-NAT : '+l.idnat):'')+(l.ifu?ln('NIF : '+l.ifu):'');
 }
 function caisseS(){return DB.caisse.filter(e=>e.boutique===DB.curB);}
 // Coût moyen pondéré : réapprovisionner ne doit pas réévaluer le stock déjà en rayon au coût du dernier achat
@@ -5960,18 +5962,18 @@ function bPhotoPick(input){
 }
 function saveBoutique(){
   const id=document.getElementById('b-eid').value;
-  const b={id:id||uid(),name:document.getElementById('b-name').value.trim(),name2:((document.getElementById('b-name2')||{}).value||'').trim(),resp:document.getElementById('b-resp').value.trim(),phone:document.getElementById('b-phone').value.trim(),whatsapp:document.getElementById('b-whatsapp').value.trim(),addr:document.getElementById('b-addr').value.trim(),rccm:document.getElementById('b-rccm').value.trim(),ifu:document.getElementById('b-ifu').value.trim(),devise:document.getElementById('b-devise').value,emoji:document.getElementById('b-emoji').value||'🏪',photo:_bPhoto||'',taux:parseFloat(document.getElementById('b-taux').value)||1,tvaActive:document.getElementById('b-tva-active').checked,tvaTaux:parseFloat(document.getElementById('b-tva-taux').value)||0};
+  const b={id:id||uid(),name:document.getElementById('b-name').value.trim(),name2:((document.getElementById('b-name2')||{}).value||'').trim(),resp:document.getElementById('b-resp').value.trim(),phone:document.getElementById('b-phone').value.trim(),whatsapp:document.getElementById('b-whatsapp').value.trim(),addr:document.getElementById('b-addr').value.trim(),rccm:document.getElementById('b-rccm').value.trim(),idnat:((document.getElementById('b-idnat')||{}).value||'').trim(),ifu:document.getElementById('b-ifu').value.trim(),devise:document.getElementById('b-devise').value,emoji:document.getElementById('b-emoji').value||'🏪',photo:_bPhoto||'',taux:parseFloat(document.getElementById('b-taux').value)||1,tvaActive:document.getElementById('b-tva-active').checked,tvaTaux:parseFloat(document.getElementById('b-tva-taux').value)||0};
   if(!b.name){toast('Nom requis','❌');return;}
   if(id)DB.boutiques=DB.boutiques.map(x=>x.id===id?b:x);
   else{if(DB.boutiques.length>=10){toast('Max 10 boutiques','❌');return;}DB.boutiques.push(b);}
   save();closeM('m-add-boutique');renderSB();renderBoutiquesModal();renderBoutiquesPageParam();
   toast('✅ Boutique enregistrée !');
-  ['b-eid','b-name','b-name2','b-resp','b-phone','b-whatsapp','b-addr','b-rccm','b-ifu','b-emoji'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  ['b-eid','b-name','b-name2','b-resp','b-phone','b-whatsapp','b-addr','b-rccm','b-idnat','b-ifu','b-emoji'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   bPhotoReset();
 }
 // Nouvelle boutique : formulaire vierge (aucune donnée d'une autre boutique ne doit être reprise)
 function viderFormBoutique(){
-  ['b-eid','b-name','b-name2','b-resp','b-phone','b-whatsapp','b-addr','b-rccm','b-ifu','b-emoji'].forEach(function(i){const el=document.getElementById(i);if(el)el.value='';});
+  ['b-eid','b-name','b-name2','b-resp','b-phone','b-whatsapp','b-addr','b-rccm','b-idnat','b-ifu','b-emoji'].forEach(function(i){const el=document.getElementById(i);if(el)el.value='';});
   bPhotoReset();
 }
 function renderBoutiquesPageParam(){
@@ -5990,7 +5992,7 @@ function editBoutique(id){
   ['b-eid','b-name','b-resp','b-phone','b-addr','b-devise','b-emoji'].forEach((i,j)=>{const el=document.getElementById(i);if(el)el.value=[b.id,b.name,b.resp||'',b.phone||'',b.addr||'',b.devise||'$',b.emoji||'🏪'][j];});
   const bwaEl=document.getElementById('b-whatsapp');if(bwaEl)bwaEl.value=b.whatsapp||'';
   const bn2El=document.getElementById('b-name2');if(bn2El)bn2El.value=b.name2||'';
-  document.getElementById('b-rccm').value=b.rccm||'';document.getElementById('b-ifu').value=b.ifu||'';
+  document.getElementById('b-rccm').value=b.rccm||'';{const ie=document.getElementById('b-idnat');if(ie)ie.value=b.idnat||'';}document.getElementById('b-ifu').value=b.ifu||'';
   _bPhoto=b.photo||'';bPhotoRefresh();
   document.getElementById('b-taux').value=b.taux||1;
   document.getElementById('b-tva-active').checked=b.tvaActive||false;
@@ -7372,7 +7374,8 @@ function recuCanvas(v){
       if(l.adr)centre(l.adr,21,false,'#222');
       if(l.tel)centre('Tél : '+l.tel,21,false,'#222');
       if(l.rccm)centre('RCCM : '+l.rccm,21,false,'#222');
-      if(l.ifu)centre('IFU : '+l.ifu,21,false,'#222');})();
+      if(l.idnat)centre('ID-NAT : '+l.idnat,21,false,'#222');
+      if(l.ifu)centre('NIF : '+l.ifu,21,false,'#222');})();
     y+=4;trait(true);
     centre('FACTURE / REÇU',26,true);y+=4;
     ligne('N° Reçu',String(v.receipt||''),BS,true);
@@ -10313,7 +10316,7 @@ function docRapportCSS(){
 // En-tête façon facture : logo + nom + nom secondaire + coordonnées | titre + n° + période + date d'édition
 function docRapportEntete(titre,num,periode){
   const b=shop()||{},e=infosEntreprise(DB.curB),logo=b.photo||(DB.user&&DB.user.photo)||'';
-  const coord=[e.adr,e.tel?'Tél : '+e.tel:'',e.rccm?'RCCM : '+e.rccm:'',e.ifu?'IFU : '+e.ifu:''].filter(Boolean).map(_de).join(' · ');
+  const coord=[e.adr,e.tel?'Tél : '+e.tel:'',e.rccm?'RCCM : '+e.rccm:'',e.idnat?'ID-NAT : '+e.idnat:'',e.ifu?'NIF : '+e.ifu:''].filter(Boolean).map(_de).join(' · ');
   const now=new Date();
   return '<div class="hd"><div class="ent">'+(logo?'<img src="'+logo+'" alt="" onerror="this.remove()">':'')+'<div><div class="en">'+_de(b.name||'')+'</div>'
     +(e.nom2?'<div class="en2">'+_de(e.nom2)+'</div>':'')+(coord?'<div class="mu">'+coord+'</div>':'')+'</div></div>'
@@ -10572,7 +10575,7 @@ function changePwd(){
   ['pwd-cur','pwd-new','pwd-conf'].forEach(i=>document.getElementById(i).value='');
   setTimeout(()=>msg.style.display='none',3000);toast('Mot de passe changé !');
 }
-function saveProfile(){DB.user.name=document.getElementById('p-name').value.trim();DB.user.name2=((document.getElementById('p-name2')||{}).value||'').trim();DB.user.email=document.getElementById('p-email').value.trim();['rccm','ifu','tel','adr'].forEach(function(k){const el=document.getElementById('p-'+k);if(el)DB.user[k]=el.value.trim();});save();renderSB();updateProfileDisplay();toast('Profil mis à jour');}
+function saveProfile(){DB.user.name=document.getElementById('p-name').value.trim();DB.user.name2=((document.getElementById('p-name2')||{}).value||'').trim();DB.user.email=document.getElementById('p-email').value.trim();['rccm','idnat','ifu','tel','adr'].forEach(function(k){const el=document.getElementById('p-'+k);if(el)DB.user[k]=el.value.trim();});save();renderSB();updateProfileDisplay();toast('Profil mis à jour');}
 // ============================================================
 // MOBILE MONEY — MULTI-WALLET
 // ============================================================
@@ -14571,7 +14574,7 @@ function goP(id,el){
   if(id==='inventaire'){renderInvTab();}
   if(id==='gestion'){const tabs=document.querySelectorAll('#g-nav .tab');if(tabs.length)switchG(gMode,Array.from(tabs).find(function(t){return (t.getAttribute('onclick')||'').indexOf("switchG('"+gMode+"'")>=0;})||tabs[0]);}
   if(id==='rapports'){renderAdvStats();try{rjMaj();}catch(e){}}
-  if(id==='parametres'){renderBoutiquesPageParam();updateProfileDisplay();document.getElementById('p-name').value=DB.user.name||'';{const n2=document.getElementById('p-name2');if(n2)n2.value=DB.user.name2||'';}document.getElementById('p-email').value=DB.user.email||'';['rccm','ifu','tel','adr'].forEach(function(k){const el=document.getElementById('p-'+k);if(el)el.value=DB.user[k]||'';});renderCycleInfo();}
+  if(id==='parametres'){renderBoutiquesPageParam();updateProfileDisplay();document.getElementById('p-name').value=DB.user.name||'';{const n2=document.getElementById('p-name2');if(n2)n2.value=DB.user.name2||'';}document.getElementById('p-email').value=DB.user.email||'';['rccm','idnat','ifu','tel','adr'].forEach(function(k){const el=document.getElementById('p-'+k);if(el)el.value=DB.user[k]||'';});renderCycleInfo();}
   // Sécurité : vérifier que le vendeur connecté a bien le droit d'accéder à cette page
   if(currentSession&&currentSession.role==='vendeur'){
     const vendeurObj=getVendeurByNumero(currentSession.numero);
@@ -15809,7 +15812,7 @@ function rrfHTML(r){
     +r.articles.map(function(a){return '<tr><td>'+_de(a.nom)+'</td><td style="text-align:right">'+a.qte+'</td><td style="text-align:right">'+fmt(a.pu)+'</td><td style="text-align:right">'+fmt(a.total)+'</td></tr>';}).join('')
     +(r.totalFrais>0&&r.totalAchat-r.articles.reduce(function(a,x){return a+x.total;},0)>0.004?'<tr><td colspan="3">Frais (transport, douane, agent, autres)</td><td style="text-align:right">'+fmt(r.totalFrais)+'</td></tr>':'')
     +'<tr><td colspan="3"><b>Montant total de l\'achat</b></td><td style="text-align:right"><b>'+m(r.totalAchat)+'</b></td></tr></tbody></table>':'<p class="mu">Détail des articles non disponible.</p>';
-  const coord=[e.adr,e.tel?'Tél : '+e.tel:'',e.rccm?'RCCM : '+e.rccm:'',e.ifu?'IFU : '+e.ifu:''].filter(Boolean).map(_de).join(' · ');
+  const coord=[e.adr,e.tel?'Tél : '+e.tel:'',e.rccm?'RCCM : '+e.rccm:'',e.idnat?'ID-NAT : '+e.idnat:'',e.ifu?'NIF : '+e.ifu:''].filter(Boolean).map(_de).join(' · ');
   const st=r.statut==='ENTIÈREMENT RÉGLÉ',ann=!!r.annule;
   return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+_de(r.num)+'</title><style>'
    +'body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:12.5px;margin:0;padding:18px;max-width:760px}'
@@ -18179,7 +18182,7 @@ function vdPrefixeMaj(){
   }
   const l=vdLettreForm(),eid=(document.getElementById('vd-eid')||{}).value;
   pre.textContent=l;
-  inp.placeholder=eid?'Laisser vide pour ne pas changer':'Complétez (3 caractères min.)';
+  inp.placeholder=eid?'Laisser vide pour ne pas changer':'Complétez (4 caractères min.)';
   const h=document.getElementById('vd-pwd-aide');if(h)h.innerHTML='Le mot de passe commence toujours par <b>'+l+'</b> (lettre de la boutique). Exemple : <b>'+l+'</b>4821 → l\'employé tape « '+l+'4821 ».';
 }
 (function(){
@@ -18190,7 +18193,7 @@ function vdPrefixeMaj(){
     if(!inp)return _sv.apply(this,arguments);
     const suite=inp.value,eid=(document.getElementById('vd-eid')||{}).value;
     if(suite){
-      if(suite.length<3){toast('Complétez le mot de passe : au moins 3 caractères après la lettre','❌');return;}
+      if(suite.length<4){toast('Complétez le mot de passe : au moins 4 caractères après la lettre','❌');return;}
       inp.value=vdLettreForm()+suite;
     } else if(!eid){toast('Complétez le mot de passe de l\'employé','❌');return;}
     try{return _sv.apply(this,arguments);}finally{inp.value='';}
@@ -19106,6 +19109,198 @@ function mdpEcran(q){
   };
 }
 try{const q=mdpLireLien();if(q)setTimeout(function(){mdpEcran(q);},800);}catch(e){}
+</script>
+
+<script type="text/dcm-defer">
+// ===== 🔐 SÉCURITÉ v14 =====
+// 1. Modules différents par boutique pour un même vendeur (RH → Vendeurs & accès).
+// 2. Mot de passe gérant provisoire « 123456 » : changement OBLIGATOIRE dès que le logiciel est protégé
+//    (verrouillage activé ou employés créés). « Mot de passe gérant oublié ? » : déblocage par le compte cloud de l'appareil.
+// 3. Message clair quand le cloud est en pause (abonnement inactif côté serveur).
+
+// ---------- 1. MODULES PAR BOUTIQUE ----------
+(function(){
+  const _gvp=getVendeurPermissions;
+  getVendeurPermissions=function(v){
+    try{
+      const moi=(typeof vdMoi==='function')?vdMoi():null;
+      if(moi&&v&&v.id===moi.id&&DB.curB!==moi.boutique&&moi.permsParBoutique&&moi.permsParBoutique[DB.curB])return moi.permsParBoutique[DB.curB];
+    }catch(e){}
+    return _gvp.apply(this,arguments);
+  };
+  // Un vendeur connecté reste « lui-même » dans toutes ses boutiques (son N° ne désigne pas un autre vendeur de la boutique visitée)
+  const _gvn=getVendeurByNumero;
+  getVendeurByNumero=function(numero){
+    try{const moi=(typeof vdMoi==='function')?vdMoi():null;if(moi&&parseInt(numero)===parseInt(moi.numero))return moi;}catch(e){}
+    return _gvn.apply(this,arguments);
+  };
+})();
+var PM={home:'',cur:'',homePerms:null,map:{}};
+function pmLire(){const o={};document.querySelectorAll('#vd-permissions-list .vd-perm-cb').forEach(function(cb){o[cb.dataset.key]=cb.checked;});return o;}
+function pmClone(o){return JSON.parse(JSON.stringify(o||{}));}
+function pmCochees(){return [...document.querySelectorAll('#vd-bq-wrap .vd-bq-cb')].filter(function(c){return c.checked;}).map(function(c){return c.dataset.b;});}
+function pmNomB(id){const b=(DB.boutiques||[]).find(function(x){return x.id===id;});return b?(bLettre(id)+' — '+(b.name||'Boutique')):id;}
+function pmInit(){
+  const m=document.getElementById('m-vendeur');if(!m)return;
+  const eid=(document.getElementById('vd-eid')||{}).value,v=eid?DB.vendeurs.find(function(x){return x.id===eid;}):null;
+  PM.home=v?v.boutique:DB.curB;PM.cur=PM.home;PM.homePerms=pmLire();PM.map=pmClone(v&&v.permsParBoutique);
+  let z=document.getElementById('vd-pm-chips');
+  if(!z){
+    const liste=document.getElementById('vd-permissions-list');if(!liste)return;
+    z=document.createElement('div');z.id='vd-pm-chips';z.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px';
+    liste.parentNode.insertBefore(z,liste);
+    const wrap=document.getElementById('vd-bq-wrap');
+    if(wrap&&!wrap.dataset.pm){wrap.dataset.pm='1';wrap.addEventListener('change',function(){pmChips();});}
+  }
+  pmChips();
+}
+function pmChips(){
+  const z=document.getElementById('vd-pm-chips');if(!z)return;
+  const ids=pmCochees();if(ids.indexOf(PM.home)<0)ids.unshift(PM.home);
+  if(ids.indexOf(PM.cur)<0)pmChoisir(PM.home,true);
+  z.innerHTML=ids.length<2?'':'<div style="width:100%;font-size:12px;color:var(--mu)">Modules pour la boutique :</div>'+ids.map(function(id){
+    const on=id===PM.cur;
+    return '<button type="button" class="btn bsm" onclick="pmChoisir(\''+id+'\')" style="'+(on?'background:var(--b);color:#fff':'background:var(--bg);color:var(--tx);border:1px solid var(--br)')+'">'+_de(pmNomB(id))+(id===PM.home?' 🏠':'')+'</button>';
+  }).join('');
+  const t=[...document.querySelectorAll('#m-vendeur div')].find(function(d){return d.children.length===0&&/^🔐 Accès aux modules/.test(d.textContent);});
+  if(t)t.textContent='🔐 Accès aux modules'+(ids.length>1?' — '+pmNomB(PM.cur):'');
+}
+function pmChoisir(id,silencieux){
+  if(PM.cur===PM.home)PM.homePerms=pmLire();else PM.map[PM.cur]=pmLire();
+  PM.cur=id;
+  renderPermissionsCheckboxes(id===PM.home?PM.homePerms:(PM.map[id]||pmClone(PM.homePerms)));
+  if(!silencieux)pmChips();
+}
+(function(){
+  const _ov=openVendeurModal;openVendeurModal=function(){const r=_ov.apply(this,arguments);try{pmInit();}catch(e){console.error(e);}return r;};
+  const _ev=editVendeur;editVendeur=function(){const r=_ev.apply(this,arguments);try{pmInit();}catch(e){console.error(e);}return r;};
+  const _sv=saveVendeur;saveVendeur=function(){
+    let carte=null;
+    try{
+      if(PM.cur!==PM.home){PM.map[PM.cur]=pmLire();PM.cur=PM.home;renderPermissionsCheckboxes(PM.homePerms);}
+      else PM.homePerms=pmLire();
+      carte={};pmCochees().forEach(function(id){if(id!==PM.home)carte[id]=PM.map[id]||pmClone(PM.homePerms);});
+    }catch(e){}
+    const eid=(document.getElementById('vd-eid')||{}).value,avant=(DB.vendeurs||[]).length;
+    const r=_sv.apply(this,arguments);
+    try{
+      const m=document.getElementById('m-vendeur');
+      if(carte&&!(m&&m.classList.contains('open'))){
+        const v=eid?DB.vendeurs.find(function(x){return x.id===eid;}):(DB.vendeurs.length>avant?DB.vendeurs[DB.vendeurs.length-1]:null);
+        if(v){v.permsParBoutique=carte;save();}
+      }
+      gpVerifier();
+    }catch(e){console.error(e);}
+    return r;
+  };
+})();
+
+// ---------- 2. MOT DE PASSE DU GÉRANT ----------
+const GP_FAIBLES=['123456','000000','111111','222222','654321','12345678','1234567','123123','112233','121212','abcdef','abc123','azerty','qwerty','password','motdepasse','admin1','gerant'];
+function gpDefaut(){try{return userPwdOk('123456');}catch(e){return false;}}
+function gpFaible(p){p=String(p||'');return p.length<6||GP_FAIBLES.indexOf(p.toLowerCase())>=0||/^(.)\1+$/.test(p)||'0123456789'.indexOf(p)>=0||'9876543210'.indexOf(p)>=0;}
+function gpProtege(){return !!((DB.config&&DB.config.verrouillageActif)||(DB.vendeurs||[]).length);}
+function gpDoitChanger(){return !!(currentSession&&currentSession.role==='gerant'&&gpProtege()&&gpDefaut());}
+function gpVerifier(){try{if(gpDoitChanger()&&!document.getElementById('gp-ov'))gpEcran('obligatoire');}catch(e){}}
+function gpChamp(id,ph){return '<input type="password" id="'+id+'" placeholder="'+ph+'" autocomplete="new-password" style="width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:8px;padding:11px 12px;font-size:15px;margin-bottom:8px;color:#111">';}
+function gpEcran(mode){
+  let ov=document.getElementById('gp-ov');if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='gp-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:20030;background:linear-gradient(135deg,#1E40AF,#0F172A);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto';
+  const oblig=mode==='obligatoire';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:24px 20px;max-width:390px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);color:#1F2937">'
+    +'<div style="font-size:34px;text-align:center">🔐</div><div style="font-size:17px;font-weight:800;text-align:center;margin:4px 0 6px">'+(oblig?'Choisissez votre mot de passe de gérant':'Nouveau mot de passe de gérant')+'</div>'
+    +'<div style="font-size:12.5px;color:#4B5563;text-align:center;line-height:1.5;margin-bottom:12px">'+(oblig?'Le mot de passe provisoire <b>123456</b> doit être remplacé : sans cela, n\'importe quel employé pourrait entrer comme gérant.':'Votre identité a été vérifiée avec votre compte en ligne.')+'</div>'
+    +gpChamp('gp-n1','Nouveau mot de passe (6 caractères min.)')+gpChamp('gp-n2','Confirmez le mot de passe')
+    +'<div id="gp-err" style="display:none;color:#EF4444;font-size:12px;font-weight:600;margin:0 0 8px"></div>'
+    +'<button type="button" id="gp-ok" style="width:100%;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700">✅ Enregistrer</button>'
+    +'<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:10px">Évitez 123456, 000000, votre date de naissance… Ne le donnez jamais à vos employés.</div></div>';
+  document.body.appendChild(ov);
+  setTimeout(function(){const i=document.getElementById('gp-n1');if(i)i.focus();},100);
+  ov.querySelector('#gp-ok').onclick=function(){
+    const a=ov.querySelector('#gp-n1').value,b=ov.querySelector('#gp-n2').value,err=ov.querySelector('#gp-err');
+    const e=function(t){err.textContent=t;err.style.display='block';};
+    if(gpFaible(a)){e('❌ Mot de passe trop simple : 6 caractères minimum, pas de suite comme 123456 ou 000000');return;}
+    if(a!==b){e('❌ Les deux mots de passe ne sont pas identiques');return;}
+    DB.user.pwdHash=dcmHash(a);if(DB.user.pwd)delete DB.user.pwd;save();
+    try{licReussite();}catch(x){}
+    gpConseil(ov);
+  };
+}
+// Conseil unique : verrouiller l'appareil lui-même
+function gpConseil(ov){
+  ov.querySelector('div').innerHTML='<div style="font-size:34px;text-align:center">✅</div><div style="font-size:17px;font-weight:800;text-align:center;margin:4px 0 8px">Mot de passe enregistré</div>'
+    +'<div style="background:#EFF6FF;border-left:4px solid #2563EB;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.55;color:#1F2937">📱💻 <b>Protégez aussi cet appareil</b><br>Toutes les données de votre boutique sont sur ce téléphone ou cet ordinateur. Mettez un <b>code de verrouillage</b> (code, schéma ou empreinte) sur le téléphone, et un <b>mot de passe de session</b> sur l\'ordinateur. Ne laissez jamais l\'appareil ouvert sans surveillance.</div>'
+    +'<button type="button" id="gp-fin" style="width:100%;margin-top:14px;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700">Compris</button>';
+  ov.querySelector('#gp-fin').onclick=function(){ov.remove();try{localStorage.setItem('dcm_conseil_verrou','1');}catch(e){}};
+}
+// « Mot de passe gérant oublié ? » : vérification par le compte cloud lié à CET appareil
+function gpOublie(){
+  const s=(typeof clSession==='function')?clSession():null;
+  let ov=document.getElementById('gp-ov');if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='gp-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:20030;background:rgba(15,23,42,.75);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto';
+  const ferme='<button type="button" onclick="document.getElementById(\'gp-ov\').remove()" style="width:100%;margin-top:8px;background:#F3F4F6;color:#374151;border:none;border-radius:9px;padding:11px;font-size:13px;font-weight:600">Annuler</button>';
+  if(!s||!s.user||!s.user.email){
+    ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:22px 20px;max-width:380px;width:100%;color:#1F2937"><div style="font-size:30px;text-align:center">🆘</div><div style="font-size:16px;font-weight:800;text-align:center;margin:4px 0 8px">Mot de passe gérant oublié</div><div style="font-size:13px;color:#4B5563;line-height:1.55;text-align:center">Cet appareil n\'est pas relié à un compte en ligne : contactez le support DAGAS EMPIRE pour débloquer le logiciel.</div><a href="https://wa.me/243845254323" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:12px;background:#16A34A;color:#fff;border-radius:9px;padding:12px;font-size:14px;font-weight:700;text-decoration:none">💬 Support WhatsApp</a>'+ferme+'</div>';
+    document.body.appendChild(ov);return;
+  }
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:22px 20px;max-width:380px;width:100%;color:#1F2937"><div style="font-size:30px;text-align:center">🔑</div><div style="font-size:16px;font-weight:800;text-align:center;margin:4px 0 6px">Mot de passe gérant oublié</div>'
+    +'<div style="font-size:12.5px;color:#4B5563;line-height:1.5;text-align:center;margin-bottom:10px">Confirmez votre identité avec le mot de passe de votre <b>compte en ligne</b> :<br><b>'+_de(s.user.email)+'</b></div>'
+    +gpChamp('gp-cl','Mot de passe du compte en ligne')
+    +'<div id="gp-err" style="display:none;color:#EF4444;font-size:12px;font-weight:600;margin:0 0 8px"></div>'
+    +'<button type="button" id="gp-vf" style="width:100%;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:700">Vérifier</button>'+ferme+'</div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#gp-vf').onclick=async function(){
+    const err=ov.querySelector('#gp-err'),p=ov.querySelector('#gp-cl').value;
+    const bloque=(typeof licEssaisBloque==='function')?licEssaisBloque():0;
+    if(bloque){err.textContent='Trop d\'essais. Réessayez dans '+bloque+' min.';err.style.display='block';return;}
+    if(!clEnLigne()){err.textContent='Internet est nécessaire pour cette vérification';err.style.display='block';return;}
+    this.disabled=true;
+    try{await clConnexion(s.user.email,p);try{licReussite();}catch(x){}gpEcran('oubli');}
+    catch(x){try{licEchec();}catch(y){}this.disabled=false;err.textContent='❌ Mot de passe du compte en ligne incorrect';err.style.display='block';}
+  };
+}
+(function(){
+  const _fl=finishLogin;finishLogin=function(){const r=_fl.apply(this,arguments);setTimeout(gpVerifier,300);return r;};
+  // Changement volontaire dans Profil : mêmes règles (plus de mot de passe trop simple)
+  const _cp=changePwd;changePwd=function(){
+    const nw=(document.getElementById('pwd-new')||{}).value||'',msg=document.getElementById('pwd-msg');
+    if(nw&&gpFaible(nw)){if(msg){msg.style.display='block';msg.style.color='var(--r)';msg.textContent='❌ Trop simple : 6 caractères minimum, pas 123456, 000000…';}return;}
+    return _cp.apply(this,arguments);
+  };
+  // Lien « Mot de passe gérant oublié ? » sous l'écran de connexion
+  function lien(){
+    const e=document.getElementById('login-error');if(!e||document.getElementById('gp-oubli'))return;
+    e.insertAdjacentHTML('afterend','<div id="gp-oubli" style="text-align:center;margin:8px 0 2px"><a href="#" onclick="event.preventDefault();gpOublie()" style="font-size:12.5px;color:#2563EB;font-weight:600">Mot de passe gérant oublié ?</a></div>');
+  }
+  try{lien();}catch(e){}
+  const _sr=setLoginRole;setLoginRole=function(role){const r=_sr.apply(this,arguments);try{lien();const l=document.getElementById('gp-oubli');if(l)l.style.display=role==='gerant'?'':'none';}catch(e){}return r;};
+  setTimeout(gpVerifier,2500);
+})();
+
+// ---------- 3. CLOUD EN PAUSE (abonnement inactif : refusé par le serveur) ----------
+const CL_PAUSE='⏸ Abonnement inactif : la sauvegarde en ligne et la synchronisation sont en pause. Vos données restent en sécurité sur cet appareil. Renouvelez votre accès pour les relancer.';
+(function(){
+  const _m=clMsgErreur;
+  clMsgErreur=function(j,d){
+    const m=_m.apply(this,arguments);
+    if(/row-level security|violates|Envoi refusé \((401|403)\)|unauthorized/i.test(String(m)))return CL_PAUSE;
+    return m;
+  };
+  const _a=clAfficher;
+  clAfficher=function(){
+    const r=_a.apply(this,arguments);
+    try{
+      const e=clEtat(),z=document.getElementById('cloud-zone');
+      if(z&&e&&/en pause/.test(String(e.erreur||''))&&!z.querySelector('.cmd-btn')&&typeof cmdBoutonHTML==='function'){
+        const d=[...z.querySelectorAll('div')].find(function(x){return x.children.length===0&&/en pause/.test(x.textContent);});
+        if(d)d.insertAdjacentHTML('afterend',cmdBoutonHTML());
+      }
+    }catch(x){}
+    return r;
+  };
+})();
 </script>
 
 </body>
