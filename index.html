@@ -19184,14 +19184,45 @@ function sendAI(){
 // Il ne s'active que sur une adresse web (https) : ouvert comme simple fichier ou dans l'APK, rien ne change.
 // Les données (ventes, stock, caisse…) restent sur l'appareil : le service worker ne les touche jamais.
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
+  // Au chargement on note s'il y a DÉJÀ une version active : on ne rechargera que pour REMPLACER une version existante
+  // (jamais lors de la toute 1re installation, où il n'y a rien à remplacer).
+  var DCM_hadCtrl=!!navigator.serviceWorker.controller;
+  var DCM_reloaded=false, DCM_updatePret=false;
+  function dcmSafeReload(){
+    if(DCM_reloaded)return;
+    // Ne JAMAIS couper une saisie : on reporte si une fenêtre est ouverte ou si un champ est en cours d'édition.
+    var modal=document.querySelector('.ovl.open');
+    var ae=document.activeElement, tag=ae&&ae.tagName;
+    var saisie=(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT');
+    if(modal||saisie){DCM_updatePret=true;dcmBanniere();return;}
+    DCM_reloaded=true;try{location.reload();}catch(e){}
+  }
+  function dcmBanniere(){
+    if(document.getElementById('dcm-maj-banner'))return;
+    var b=document.createElement('div');b.id='dcm-maj-banner';
+    b.setAttribute('style','position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:99999;background:#0b1b3a;color:#fff;border:1px solid #2563eb;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:14px;cursor:pointer');
+    b.innerHTML='<span style="font-size:18px">🔄</span><span style="flex:1">Nouvelle version prête. Appuyez pour l\'appliquer.</span><span style="font-weight:800;background:#2563eb;padding:6px 12px;border-radius:8px;white-space:nowrap">Mettre à jour</span>';
+    b.onclick=function(){DCM_reloaded=true;try{location.reload();}catch(e){}};
+    document.body.appendChild(b);
+  }
+  // Quand une nouvelle version prend le contrôle (skipWaiting + clients.claim du sw.js), on recharge pour l'appliquer.
+  navigator.serviceWorker.addEventListener('controllerchange',function(){
+    if(!DCM_hadCtrl)return; // 1re installation : rien à remplacer, pas de rechargement
+    dcmSafeReload();
+  });
   window.addEventListener('load',function(){
-    navigator.serviceWorker.register('sw.js').then(function(reg){
+    navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(function(reg){
+      function check(){try{reg.update();}catch(e){}}
+      check(); // vérifie TOUT DE SUITE s'il existe une nouvelle version (c'est ce qui manquait avant)
+      // Re-vérifie à chaque retour dans l'app : rouvrir l'app installée suffit désormais à récupérer la mise à jour.
+      document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){check();if(DCM_updatePret)dcmSafeReload();}});
+      window.addEventListener('focus',function(){check();if(DCM_updatePret)dcmSafeReload();});
+      setInterval(check,30*60*1000); // filet de sécurité si l'app reste ouverte très longtemps
       reg.addEventListener('updatefound',function(){
-        const nw=reg.installing;if(!nw)return;
+        var nw=reg.installing;if(!nw)return;
         nw.addEventListener('statechange',function(){
-          // Une nouvelle version a été téléchargée alors qu'une ancienne tournait : elle sera utilisée à la prochaine ouverture
           if(nw.state==='installed'&&navigator.serviceWorker.controller){
-            try{toast('🔄 Nouvelle version téléchargée : elle s\'appliquera à la prochaine ouverture du logiciel');}catch(e){}
+            try{toast('🔄 Mise à jour en cours…');}catch(e){}
           }
         });
       });
