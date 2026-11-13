@@ -21,6 +21,11 @@ h2{font-size:17px;margin:0 0 8px;color:var(--b)}
 ul{padding-left:20px;margin:6px 0}
 li{margin:3px 0}
 .note{font-size:13px;color:var(--mu)}
+.important{background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:2px solid #F59E0B;border-radius:14px;padding:18px 20px;margin-bottom:14px}
+@media (prefers-color-scheme:dark){.important{background:linear-gradient(135deg,#3B2F0B,#4A3A10);border-color:#F59E0B}}
+.important h2{color:#B45309;font-size:19px;margin:0 0 8px}
+@media (prefers-color-scheme:dark){.important h2{color:#FBBF24}}
+.important .big{font-size:17px;font-weight:800;color:var(--tx);margin:6px 0}
 a{color:var(--b)}
 footer{text-align:center;font-size:12px;color:var(--mu);padding:10px 16px 30px}
 </style>
@@ -29,9 +34,16 @@ footer{text-align:center;font-size:12px;color:var(--mu);padding:10px 16px 30px}
 <header>
   <img src="icon-192.png" alt="">
   <h1>Conditions générales d'utilisation et de vente</h1>
-  <p>Logiciel Daga's Manager — entreprise Daga's Manager, groupe DAGA'S EMPIRE · Dernière mise à jour : 6 novembre 2026</p>
+  <p>Logiciel Daga's Manager — entreprise Daga's Manager, groupe DAGA'S EMPIRE · Dernière mise à jour : 13 novembre 2026</p>
 </header>
 <main>
+
+<div class="important">
+  <h2>📱 Règle d'or : une boutique = un appareil</h2>
+  <p class="big">Chaque boutique s'utilise sur <u>un seul appareil</u> (le téléphone ou la tablette de la boutique), que les vendeurs se partagent.</p>
+  <p>C'est le mode d'emploi recommandé et garanti : dans ce cas, toutes les ventes, le stock et la caisse restent parfaitement justes, et il n'y a <b>aucun risque</b>, jamais. La sauvegarde en ligne, chiffrée, protège automatiquement les données de cet appareil.</p>
+  <p class="note">Si une même boutique est utilisée sur <b>plusieurs appareils en même temps</b>, chaque appareil garde ses propres données (rien n'est perdu), mais elles ne se combinent pas automatiquement : utilisez alors un seul appareil comme référence pour cette boutique. Changer d'appareil (nouveau téléphone) se fait proprement en récupérant la copie du cloud.</p>
+</div>
 
 <section>
   <h2>1. Qui sommes-nous ?</h2>
@@ -51,7 +63,7 @@ footer{text-align:center;font-size:12px;color:var(--mu);padding:10px 16px 30px}
   <ul>
     <li>Les données sont enregistrées <b>sur l'appareil</b> du client. Les <b>photos des produits</b> sont rangées dans un espace séparé de l'appareil.</li>
     <li>Les reçus et devis sont générés sur l'appareil ; le client peut les <b>imprimer, télécharger (PDF/image) ou partager</b> lui-même (WhatsApp, Bluetooth…). Un <b>devis</b> n'est pas une facture définitive et ne crée aucune obligation de vente.</li>
-    <li>La sauvegarde en ligne et la synchronisation entre appareils sont chiffrées et fonctionnent quand l'appareil a internet.</li>
+    <li><b>Une boutique s'utilise sur un seul appareil</b> (le téléphone ou la tablette de la boutique, partagé par les vendeurs). La sauvegarde en ligne est chiffrée et fonctionne quand l'appareil a internet ; elle sert de copie de sécurité et permet de changer d'appareil. Elle ne fusionne pas en temps réel les données de plusieurs appareils utilisés simultanément pour la même boutique.</li>
     <li>Le logiciel peut évoluer : nous pouvons ajouter, améliorer ou retirer des fonctions. Les mises à jour s'installent automatiquement.</li>
   </ul>
 </section>
@@ -108,6 +120,7 @@ footer{text-align:center;font-size:12px;color:var(--mu);padding:10px 16px 30px}
   <h2>9. Données et sauvegardes</h2>
   <ul>
     <li>Le client reste <b>seul propriétaire</b> de ses données. Nous n'y avons pas accès : les sauvegardes en ligne sont chiffrées avec sa clé.</li>
+    <li><b>Une boutique = un appareil.</b> Chaque boutique doit être tenue sur un seul appareil de référence. La sauvegarde en ligne sert de copie de sécurité et à changer d'appareil, pas à travailler à plusieurs en même temps sur la même boutique.</li>
     <li>Le client est responsable de ses sauvegardes : activer la sauvegarde en ligne et/ou faire régulièrement des sauvegardes en fichier. La perte ou le vol de l'appareil sans sauvegarde peut entraîner la perte des données.</li>
     <li>Si le client perd <b>à la fois</b> son mot de passe et sa clé de secours, ses copies en ligne ne peuvent pas être récupérées, par personne.</li>
     <li><b>Copies en ligne inactives : archivage, pas de suppression automatique.</b> Les données comptables ne sont <b>jamais supprimées automatiquement</b>. En cas d'inactivité prolongée de la copie en ligne, le logiciel alerte à <b>6, 12 et 18 mois</b>&nbsp;; à <b>24 mois</b>, la copie en ligne est <b>archivée</b> (jamais supprimée) et reste <b>restaurable</b> par l'administrateur. Toute sauvegarde en ligne remet ce compteur à zéro&nbsp;; un client actif n'est jamais concerné. Une suppression définitive n'intervient que sur décision explicite de l'administrateur ou à la demande du client. Les données sur l'appareil du client ne sont pas concernées. Il appartient au client de garder ses sauvegardes à jour.</li>

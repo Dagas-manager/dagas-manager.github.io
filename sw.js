@@ -1,7 +1,7 @@
 // Daga's Manager - OFFLINE-FIRST. A chaque mise a jour : changer le numero (v60, v61...).
 // Robustesse : l'ancien cache (qui fonctionne) n'est JAMAIS supprime tant que le nouveau n'a pas
 // la coquille de l'app (index.html). Une mise a jour sur connexion faible ne peut donc pas casser le hors-ligne.
-const CACHE='dagas-manager-v61';
+const CACHE='dagas-manager-v67';
 // Coquille indispensable au fonctionnement hors ligne (mise en cache stricte, tout-ou-rien)
 const ESSENTIELS=['./','./index.html'];
 // Secondaires : au mieux (une icone ou une page legale manquante ne doit pas bloquer la mise a jour)
